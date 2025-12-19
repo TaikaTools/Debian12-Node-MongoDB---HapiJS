@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # ==================================================
-# SETUP SCRIPT FOR Web (Debian 12, December 19, 2025)
+# Fresh SETUP SCRIPT FOR Web server (Debian 12)
 # ==================================================
 # This script installs:
 # - Node.js 24.x LTS
@@ -11,14 +11,16 @@
 # - tmux + htop
 # - Creates database with prompted name
 # - Generates strong random secrets .env 
-# - installs HapiJS and deps
+# - installs HapiJS and miscellaneous
 # - Interactive SSL setup (Let's Encrypt, A+ ready)
-# - Harding security, tweak performance
+# - Harding security, tweaking performance
 # ==================================================
 
-read -p " 1/3 - Domain (e.g., mydomain.com, without www.): " DOMAIN
-read -p " 2/3 - Database (e.g., MyDatabase for database name): " DATABASE
-read -p " 3/3 - Folder (e.g., for myfolder folder): " FOLDER
+read -p "1/5 - Database will be clean/overwritten, continue: y/N" OVERWRITE
+read -p "2/5 - Database (e.g., MyDatabase for database name): " DATABASE
+read -p "3/5 - Domain (e.g., mydomain.com, without www.): " DOMAIN
+read -p "4/5 - Folder (e.g., for myfolder folder): " FOLDER
+read -p "5/5 - Port (e.g., 3000): " PORT
 
 set -e  # Exit on any error
 
@@ -33,6 +35,10 @@ npm install pm2 -g
 pm2 update
 
 # 3. MongoDB 8.0
+sudo systemctl stop mongod
+sudo rm -rf /var/lib/mongodb/*   # WARNING: Deletes all data!
+sudo systemctl start mongod
+
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt update
@@ -84,7 +90,7 @@ mkdir -p $APP_DIR
 cd $APP_DIR
 
 cat > .env <<EOF
-PORT=3000
+PORT=$PORT
 MONGO_URI=mongodb://app:$APP_PASS@127.0.0.1:27017/$DATABASE?authSource=$DATABASE
 JWT_SECRET=$JWT_SECRET
 NODE_ENV=production
@@ -107,7 +113,7 @@ npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
 # 9. Nginx config
-sudo bash -c 'cat > /etc/nginx/sites-available/$FOLDER <<EOF
+sudo bash -c 'cat > /etc/nginx/sites-available/$FOLDER/ <<EOF
 server {
     listen 80;
     server_name _;
@@ -119,7 +125,7 @@ server {
     }
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection "upgrade";
@@ -184,3 +190,10 @@ echo "cd $APP_DIR && add server.js + ecosystem.config.js + pm2 start"
 echo "=================================================="
 
 echo "Cleanup complete - server leaner and more secure!"
+
+
+wget https://raw.githubusercontent.com/TaikaTools/Debian12-Node-MongoDB---HapiJS/refs/heads/main/debian12_setup.sh
+
+chmod u+x debian12_setup.sh
+
+./debian12_setup.sh
