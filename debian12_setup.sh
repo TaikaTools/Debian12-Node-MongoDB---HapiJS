@@ -75,11 +75,16 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
 
   # Create admin without auth
   sudo systemctl start mongod
+  echo "Sleep for 11 seconds, wait..."
+  sleep 11
+
   mongosh admin <<EOF
 db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: "admin" } ] })
 exit
 EOF
   sudo systemctl restart mongod
+  echo "Sleep (again) for 11 seconds (again), please wait (again)..."
+  sleep 11
 
   # Create app user
   mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
