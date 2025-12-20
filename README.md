@@ -1,6 +1,6 @@
-# ================================================
+# ========================================
 # Fresh SETUP SCRIPT FOR Web server (Debian 12)
-# ================================================
+# ========================================
 # This script installs:
 # - Node.js 24.x LTS
 # - MongoDB 8.0 (secure, auth enabled)
@@ -10,9 +10,9 @@
 # - Creates database with prompted name
 # - Generates strong random secrets .env 
 # - installs HapiJS and miscellaneous
-# - Interactive SSL setup, Let's Encrypt, A+ ready
+# - Interactive SSL setup (Let's Encrypt, A+ ready)
 # - Harding security, tweaking performance
-# ================================================
+# ========================================
 
 usage:
 
