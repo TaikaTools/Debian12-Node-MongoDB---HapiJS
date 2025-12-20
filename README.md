@@ -28,6 +28,6 @@ Perfect for deploying secure HapiJS apps with image uploads, Stripe payments, au
 ### Usage
 
 ```bash
-wget https://raw.githubusercontent.com/TaikaTools/Debian12-Node-MongoDB-HapiJS/main/debian12_setup.sh
+wget https://raw.githubusercontent.com/TaikaTools/Debian12-Node-MongoDB---HapiJS/refs/heads/main/debian12_setup.sh
 chmod +x debian12_setup.sh
 ./debian12_setup.sh
