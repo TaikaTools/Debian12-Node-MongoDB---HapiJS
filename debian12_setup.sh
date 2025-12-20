@@ -8,10 +8,10 @@
 # - MongoDB 8.0 (secure, auth enabled)
 # - PM2 (process manager)
 # - Nginx (reverse proxy + fast static/uploads)
-# - ufw + curl + tmux + htop
+# - ufw + curl + (optional: tmux + htop)
 # - Creates database with prompted name
 # - Generates strong random secrets .env 
-# - installs HapiJS and miscellaneous
+# - installs HapiJS and miscellaneous (optional)
 # - Interactive SSL setup (Let's Encrypt, A+ ready)
 # - Harding security, tweaking performance
 # ===================================================
@@ -19,22 +19,30 @@
 set -e  # Exit on error
 
 # 1. Prompts with defaults
-read -p "1/4 - Domain (e.g., mydomain.com, without www.): " DOMAIN
+read -p "1/6 - Domain (e.g., mydomain.com, without www.): " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain.com}
 
-read -p "2/4 - Database name (e.g., MyDatabase): " DATABASE
+read -p "2/6 - Database name (e.g., MyDatabase): " DATABASE
 DATABASE=${DATABASE:-MyDatabase}
 
-read -p "3/4 - Folder (e.g., myfolder): " FOLDER
+read -p "3/6 - Folder (e.g., myfolder): " FOLDER
 FOLDER=${FOLDER:-myfolder}
 
-read -p "4/4 - Port (e.g., 3000): " PORT
+read -p "4/6 - Port (e.g., 3000): " PORT
 PORT=${PORT:-3000}
+
+read -n 1 -r -s -p "5/5 - Install Tmux and hTop, 'Y' to continue." INSTALLEXTRA
+INSTALLEXTRA=${INSTALLEXTRA:-y}
+
+read -n 1 -r -s -p "6/6 - Install HapiJS and misc, 'Y' to continue..." INSTALLHAPI
+INSTALLHAPI=${INSTALLHAPI:-y}
 
 # 2. System update & tools
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
-sudo apt install -y htop tmux
+if [[ $INSTALLEXTRA == "Y" || $INSTALLEXTRA == "y" ]]; then
+  sudo apt install -y htop tmux
+fi
 
 # 3. Node.js + PM2
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
@@ -126,8 +134,10 @@ STRIPE_RETURN_URL="https://$DOMAIN/stripe_return"
 EOF
 chmod 600 .env
 
-npm init -y > /dev/null 2>&1
-npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
+if [[ $INSTALLHAPI == "Y" || $INSTALLHAPI == "y" ]]; then
+  npm init -y > /dev/null 2>&1
+  npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
+fi
 
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$FOLDER <<'EOF'
@@ -200,5 +210,7 @@ echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "Admin: $ADMIN_PASS"
 echo "App: $APP_PASS"
 echo "JWT: $JWT_SECRET"
+if [[ $INSTALLHAPI == "Y" || $INSTALLHAPI == "y" ]]; then
 echo "cd $APP_DIR && add server.js + ecosystem.config.js"
+fi
 echo "=================================================="
