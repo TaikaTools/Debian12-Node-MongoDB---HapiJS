@@ -128,8 +128,8 @@ chmod 600 .env
 npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
-# 8. Nginx
-sudo bash -c "cat > /etc/nginx/sites-available/$FOLDER <<EOF
+# 10. Nginx
+sudo bash -c "cat > /etc/nginx/sites-available/$FOLDER <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -138,6 +138,7 @@ server {
         alias $UPLOADS_DIR/;
         expires 30d;
         add_header Cache-Control \"public\";
+        access_log off;
     }
 
     location / {
@@ -152,6 +153,7 @@ server {
     }
 
     location ~ /\.env { deny all; }
+    location ~ /\.git { deny all; }
 }
 EOF"
 
