@@ -7,14 +7,14 @@ A fully automated, idempotent setup script for a secure, high-performance web se
 - MongoDB 8.0 Community Edition (authentication enabled, localhost-bound)
 - PM2 (production process manager with clustering)
 - Nginx (reverse proxy, fast static file serving for uploads/images)
-- tmux + htop (monitoring and session persistence)
+- optional: tmux + htop (monitoring and session persistence)
 - Interactive prompts for:
   - Domain name
   - Database name
   - Project folder
   - App port
 - Auto-generates strong random secrets (saved to `.env`)
-- Installs HapiJS + common dependencies (mongoose, stripe, nodemailer, etc.)
+- optional: Installs HapiJS + common dependencies (mongoose, stripe, nodemailer, etc.)
 - Interactive Let's Encrypt SSL setup (A/A+ rated)
 - Security hardening and performance tweaks (ulimits, THP disabled, unnecessary services removed)
 
