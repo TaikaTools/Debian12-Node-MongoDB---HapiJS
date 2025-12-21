@@ -7,6 +7,7 @@ A fully automated, idempotent setup script for a secure, high-performance web se
 - MongoDB 8.0 Community Edition (authentication enabled, localhost-bound)
 - PM2 (production process manager with clustering)
 - Nginx (reverse proxy, fast static file serving for uploads/images)
+- Creates a dedicated non-root system user for the app
 - optional: tmux + htop (monitoring and session persistence)
 - Interactive prompts for:
   - Domain name
