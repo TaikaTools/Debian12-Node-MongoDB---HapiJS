@@ -8,14 +8,14 @@ A fully automated, idempotent setup script for a secure, high-performance web se
 - PM2 (production process manager with clustering)
 - Nginx (reverse proxy, fast static file serving for uploads/images)
 - Creates a dedicated non-root system user for the app
-- optional: tmux + htop (monitoring and session persistence)
+- Optional: tmux + htop (monitoring and session persistence)
 - Interactive prompts for:
   - Domain name
   - Database name
   - Project folder
   - App port
 - Auto-generates strong random secrets (saved to `.env`)
-- optional: Installs HapiJS + common dependencies (mongoose, stripe, nodemailer, etc.)
+- Installs HapiJS + common dependencies (mongoose, stripe, nodemailer, etc.)
 - Interactive Let's Encrypt SSL setup (A/A+ rated)
 - Security hardening and performance tweaks (ulimits, THP disabled, unnecessary services removed)
 
