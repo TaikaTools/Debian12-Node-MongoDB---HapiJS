@@ -9,12 +9,12 @@
 # - PM2 (process manager)
 # - Nginx (reverse proxy + fast static/uploads)
 # - ufw + curl + (optional: tmux + htop)
+# - Creates a dedicated non-root system user for the app
 # - Creates database with prompted name
-# - Generates strong random secrets .env 
-# - installs HapiJS and miscellaneous (optional)
+# - Generates strong random secrets .env
+# - installs HapiJS and miscellaneous
 # - Interactive SSL setup (Let's Encrypt, A+ ready)
-# - Harding security, tweaking performance
-# ===================================================
+# - Hardening security, tweaking performance
 
 set -e  # Exit on error
 
@@ -22,25 +22,29 @@ set -e  # Exit on error
 read -p "1/6 - Domain (e.g., mydomain.com, without www.): " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain.com}
 
-read -p "2/6 - Database name (e.g., MyDatabase): " DATABASE
-DATABASE=${DATABASE:-MyDatabase}
+read -p "2/6 - Database name [ntt]: " DATABASE
+DATABASE=${DATABASE:-ntt}
 
-read -p "3/6 - Folder (e.g., myfolder): " FOLDER
-FOLDER=${FOLDER:-myfolder}
+read -p "3/6 - Folder [ntt]: " FOLDER
+FOLDER=${FOLDER:-ntt}
 
-read -p "4/6 - Port (e.g., 3000): " PORT
-PORT=${PORT:-3000}
+read -p "4/6 - RestAPI Port [3003]: " PORT
+PORT=${PORT:-3003}
 
-read -n 1 -r -s -p "5/5 - Install Tmux and hTop, 'Y' to continue." INSTALLEXTRA
-INSTALLEXTRA=${INSTALLEXTRA:-y}
+read -p "5/6 - System user name [ntt]: " USER_NAME
+USER_NAME=${USER_NAME:-ntt}
+if ! id "$USER_NAME" &>/dev/null; then
+    sudo adduser --system --group --no-create-home --disabled-password "$USER_NAME"
+    echo "Created system user: $USER_NAME"
+fi
 
-read -n 1 -r -s -p "6/6 - Install HapiJS and misc, 'Y' to continue..." INSTALLHAPI
-INSTALLHAPI=${INSTALLHAPI:-y}
+read -n 1 -r -s -p "6/6 - Install Tmux and hTop [y]: " INSTALL_EXTRA
+INSTALL_EXTRA=${INSTALL_EXTRA:-y}
 
 # 2. System update & tools
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
-if [[ $INSTALLEXTRA == "Y" || $INSTALLEXTRA == "y" ]]; then
+if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
   sudo apt install -y htop tmux
 fi
 
@@ -84,7 +88,7 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
 
   # Create admin without auth
   sudo systemctl start mongod
-  echo "Sleep for 11 seconds, wait..."
+  echo "Waiting 11 seconds for MongoDB to initialize..."
   sleep 11
 
   mongosh admin <<EOF
@@ -92,7 +96,7 @@ db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: 
 exit
 EOF
   sudo systemctl restart mongod
-  echo "Sleep (again) for 11 seconds (again), please wait (again)..."
+  echo "Waiting 11 seconds (again) for MongoDB to initialize (again)..."
   sleep 11
 
   # Create app user
@@ -106,20 +110,29 @@ else
 fi
 
 # 7. Project setup
-APP_DIR="${HOME}/$FOLDER"
-UPLOADS_DIR="/var/www/$FOLDER/uploads"
-sudo mkdir -p "$UPLOADS_DIR"
-sudo chown "$USER:$USER" "$UPLOADS_DIR"
-mkdir -p "$APP_DIR"
-cd "$APP_DIR"
+APP_DIR="/var/www/$FOLDER"
+UPLOADS_DIR="/srv/images/$FOLDER"
+sudo mkdir -p $APP_DIR
+sudo chown -R "$USER_NAME:$USER_NAME" $APP_DIR
+sudo chmod 755 $APP_DIR
+cd $APP_DIR
+
+sudo mkdir -p $UPLOADS_DIR
+sudo chown -R "$USER_NAME:$USER_NAME" $UPLOADS_DIR
+sudo chmod 755 $UPLOADS_DIR
+
+sudo mkdir -p /var/www/$FOLDER/public
+sudo chown www-data:www-data /var/www/$FOLDER/public
+sudo chmod 755 /var/www/$FOLDER/public
 
 # Save secrets to .env (only if not already present)
 cat > .env <<EOF
 PORT=$PORT
-MONGO_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$DATABASE?authSource=$DATABASE"
+MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$DATABASE?authSource=$DATABASE"
 JWT_SECRET=$JWT_SECRET
 ADMIN_PASS=$ADMIN_PASS
 APP_PASS=$APP_PASS
+DOMAIN=https://$DOMAIN
 NODE_ENV=production
 UPLOADS_PATH=$UPLOADS_DIR
 NODEMAILER_HOST=smtp.gmail.com
@@ -128,16 +141,12 @@ NODEMAILER_USER=yourgmail@gmail.com
 NODEMAILER_PASS=yourapppassword
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
-STRIPE_SUCCESS_URL="https://$DOMAIN/stripe_success"
-STRIPE_CANCEL_URL="https://$DOMAIN/stripe_cancel"
-STRIPE_RETURN_URL="https://$DOMAIN/stripe_return"
 EOF
 chmod 600 .env
+sudo chown "$USER_NAME:$USER_NAME" "$APP_DIR/.env"
 
-if [[ $INSTALLHAPI == "Y" || $INSTALLHAPI == "y" ]]; then
-  npm init -y > /dev/null 2>&1
-  npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
-fi
+npm init -y > /dev/null 2>&1
+npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$FOLDER <<'EOF'
@@ -152,7 +161,7 @@ server {
         access_log off;
     }
 
-    location / {
+    location /api/ {
         proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
@@ -161,6 +170,13 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
+    }
+
+    location / {
+        root /var/www/$FOLDER/public;
+        try_files $uri $uri/ /index.html;
+        expires 1h;
+        add_header Cache-Control "public";
     }
 
     location ~ /\.env { deny all; }
@@ -205,12 +221,15 @@ sudo apt autoclean
 sudo systemctl disable --now cups bluetooth avahi-daemon 2>/dev/null || true
 
 # 12. Final
-echo "=================================================="
+echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "Admin: $ADMIN_PASS"
 echo "App: $APP_PASS"
 echo "JWT: $JWT_SECRET"
-if [[ $INSTALLHAPI == "Y" || $INSTALLHAPI == "y" ]]; then
-echo "cd $APP_DIR && add server.js + ecosystem.config.js"
+
+if [ "$DOMAIN" != "yourdomain.com" ]; then
+echo "ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;"
+echo "ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;"
 fi
-echo "=================================================="
+echo "cd $APP_DIR && add server.js + ecosystem.config.js"
+echo "=============================================================="
