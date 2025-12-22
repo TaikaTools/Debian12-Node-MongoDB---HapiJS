@@ -31,15 +31,15 @@ PORT=${PORT:-3003}
 read -n 1 -r -s -p "4/4 - Install Tmux [y]: " INSTALL_EXTRA
 INSTALL_EXTRA=${INSTALL_EXTRA:-y}
 
-# 2. MongoDB
+# 2. System update
 sudo apt update && sudo apt upgrade -y
-sudo apt install -y gnupg
 
+# 3. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt install -y mongodb-org
 
-# 3. Hardening (always apply)
+# 4. Hardening (always apply)
 sudo mkdir -p /var/lib/mongodb /var/log/mongodb
 sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
 sudo sed -i 's/bindIp: .*/bindIp: 127.0.0.1/' /etc/mongod.conf
@@ -63,7 +63,7 @@ if ! id "$NAME" &>/dev/null; then
     echo "Created system user: $NAME"
 fi
 
-# 5. System update & tools
+# 5. Tools
 sudo apt install -y ca-certificates ufw nginx certbot python3-certbot-nginx
 if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
   sudo apt install -y tmux gnupg
@@ -75,7 +75,7 @@ sudo apt install -y nodejs
 npm install pm2 -g
 pm2 update
 
-# 7. Secrets & Users – idempotent
+# 7. Secrets & MongoDB Admin – idempotent
 DIDCREATEADMIN=${DIDCREATEADMIN:-n}
 if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   echo "First run: Generating secrets and creating users..."
@@ -117,19 +117,18 @@ sudo chmod 755 $APP_DIR/public
 # 9. Save secrets to .env (only if not already present)
 cat > .env <<EOF
 PORT=$PORT
-MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
-JWT_SECRET=$JWT_SECRET
-ADMIN_PASS=$ADMIN_PASS
-APP_PASS=$APP_PASS
 DOMAIN=https://$DOMAIN
-NODE_ENV=production
 UPLOADS_PATH=$UPLOADS_DIR
-NODEMAILER_HOST=smtp.gmail.com
-NODEMAILER_PORT=465
-NODEMAILER_USER=yourgmail@gmail.com
-NODEMAILER_PASS=yourapppassword
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
+MONGODB_APP="mongodb://app:$APP_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
+# MONGODB_ADMIN="mongodb://admin:$ADMIN_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
+JWT_SECRET=$JWT_SECRET
+NODE_ENV=production
+# NODEMAILER_HOST=smtp.gmail.com
+# NODEMAILER_PORT=465
+# NODEMAILER_USER=yourgmail@gmail.com
+# NODEMAILER_PASS=yourapppassword
+# STRIPE_SECRET_KEY=sk_test_...
+# STRIPE_WEBHOOK_SECRET=whsec_...
 EOF
 chmod 600 .env
 sudo chown "$NAME:$NAME" "$APP_DIR/.env"
