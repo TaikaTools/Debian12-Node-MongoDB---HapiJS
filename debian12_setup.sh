@@ -33,6 +33,7 @@ EXTRA_TOOLS=${EXTRA_TOOLS:-y}
 
 # 2. System update
 sudo apt update && sudo apt upgrade -y
+sudo apt install -y gnupg
 
 # 3. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
@@ -66,7 +67,7 @@ fi
 # 5. Tools
 sudo apt install -y ca-certificates ufw nginx certbot python3-certbot-nginx
 if [[ $EXTRA_TOOLS == "Y" || $EXTRA_TOOLS == "y" ]]; then
-  sudo apt install -y tmux gnupg
+  sudo apt install -y tmux
 fi
 
 # 6. Node.js + PM2
