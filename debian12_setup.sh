@@ -169,24 +169,25 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    root /var/www/html;
+    ## root /var/www/$NAME/public;
+
     location / {
-        root /var/www/html;
-        # root /var/www/$NAME/public;
+        ## try_files \$uri \$uri/ =404;
         try_files \$uri \$uri/ /index.html;
-        expires 1h;
-        add_header Cache-Control "public";
+        ## expires 1h;
+        ## add_header Cache-Control "public";
     }
 
-    location ~ /\.env { deny all; }
-    location ~ /\.git { deny all; }
+    ## location ~ /\.env { deny all; }
+    ## location ~ /\.git { deny all; }
 }
 EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$NAME /etc/nginx/sites-enabled/
-#sudo rm -f /etc/nginx/sites-enabled/default
-#sudo rm -r /var/www/html
-sudo chown www-data:www-data /var/www/html
-sudo chmod 755 /var/www/html
+sudo rm -f /etc/nginx/sites-available/default
+sudo rm -f /etc/nginx/sites-enabled/default
+sudo rm -rf /var/www/html
 
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
