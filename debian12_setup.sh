@@ -10,7 +10,7 @@
 # - Nginx (reverse proxy + fast static/uploads)
 # - ufw + curl + (optional: tmux + htop)
 # - Creates a dedicated non-root system user for the app
-# - Creates database with prompted name
+# - Creates MYNAME with prompted name
 # - Generates strong random secrets .env
 # - installs HapiJS and miscellaneous
 # - Interactive SSL setup (Let's Encrypt, A+ ready)
@@ -19,23 +19,18 @@
 set -e  # Exit on error
 
 # 1. Prompts with defaults
-read -p "1/6 - Domain (e.g., mydomain.com, without www.): " DOMAIN
+read -p "1/3 - Domain (e.g., mydomain.com, without www.): " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain.com}
 
-read -p "2/6 - Database name [ntt]: " DATABASE
-DATABASE=${DATABASE:-ntt}
+read -p "2/3 - MYNAME, MYNAME and User name [ntt]: " MYNAME
+MYNAME=${MYNAME:-ntt}
 
-read -p "3/6 - Folder [ntt]: " FOLDER
-FOLDER=${FOLDER:-ntt}
-
-read -p "4/6 - RestAPI Port [3003]: " PORT
+read -p "3/3 - RestAPI (hapi) Port [3003]: " PORT
 PORT=${PORT:-3003}
 
-read -p "5/6 - System user name [ntt]: " USER_NAME
-USER_NAME=${USER_NAME:-ntt}
-if ! id "$USER_NAME" &>/dev/null; then
-    sudo adduser --system --group --no-create-home --disabled-password "$USER_NAME"
-    echo "Created system user: $USER_NAME"
+if ! id "$MYNAME" &>/dev/null; then
+    sudo adduser --system --group --no-create-home --disabled-password "$MYNAME"
+    echo "Created system user: $MYNAME"
 fi
 
 read -n 1 -r -s -p "6/6 - Install Tmux and hTop [y]: " INSTALL_EXTRA
@@ -100,8 +95,8 @@ EOF
   sleep 11
 
   # Create app user
-  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-use $DATABASE
+  mongosh -u admin -p "$ADMIN_PASS" --authenticationMYNAME admin <<EOF
+use $MYNAME
 db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
 exit
 EOF
@@ -110,25 +105,25 @@ else
 fi
 
 # 7. Project setup
-APP_DIR="/var/www/$FOLDER"
-UPLOADS_DIR="/srv/images/$FOLDER"
+APP_DIR="/var/www/$MYNAME"
 sudo mkdir -p $APP_DIR
-sudo chown -R "$USER_NAME:$USER_NAME" $APP_DIR
+sudo chown -R "$MYNAME:$MYNAME" $APP_DIR
 sudo chmod 755 $APP_DIR
 cd $APP_DIR
 
+UPLOADS_DIR="/srv/images/$MYNAME"
 sudo mkdir -p $UPLOADS_DIR
-sudo chown -R "$USER_NAME:$USER_NAME" $UPLOADS_DIR
+sudo chown -R "$MYNAME:$MYNAME" $UPLOADS_DIR
 sudo chmod 755 $UPLOADS_DIR
 
-sudo mkdir -p /var/www/$FOLDER/public
-sudo chown www-data:www-data /var/www/$FOLDER/public
-sudo chmod 755 /var/www/$FOLDER/public
+sudo mkdir -p $APP_DIR/public
+sudo chown www-data:www-data $APP_DIR/$MYNAME/public
+sudo chmod 755 $APP_DIR/$MYNAME/public
 
 # Save secrets to .env (only if not already present)
 cat > .env <<EOF
 PORT=$PORT
-MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$DATABASE?authSource=$DATABASE"
+MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$MYNAME?authSource=$MYNAME"
 JWT_SECRET=$JWT_SECRET
 ADMIN_PASS=$ADMIN_PASS
 APP_PASS=$APP_PASS
@@ -143,13 +138,13 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 EOF
 chmod 600 .env
-sudo chown "$USER_NAME:$USER_NAME" "$APP_DIR/.env"
+sudo chown "$MYNAME:$MYNAME" "$APP_DIR/.env"
 
 npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
 # 10. Nginx config
-sudo bash -c "cat > /etc/nginx/sites-available/$FOLDER <<'EOF'
+sudo bash -c "cat > /etc/nginx/sites-available/$MYNAME <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -160,6 +155,7 @@ server {
         add_header Cache-Control \"public\";
         access_log off;
     }
+
     location /api/ {
         proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
@@ -172,8 +168,9 @@ server {
     }
 
     location / {
-        root /var/www/$FOLDER/public;
-        try_files $uri $uri/ /index.html;
+        root /var/www/html;
+        # root /var/www/$MYNAME/public;
+        try_files \$uri \$uri/ /index.html;
         expires 1h;
         add_header Cache-Control "public";
     }
@@ -183,9 +180,12 @@ server {
 }
 EOF"
 
-sudo ln -sf /etc/nginx/sites-available/$FOLDER /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/$MYNAME /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
 #sudo rm -r /var/www/html
+sudo chown www-data:www-data /var/www/html
+sudo chmod 755 /var/www/html
+
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
 
@@ -204,7 +204,7 @@ sudo ufw enable
 
 # 10. SSL
 if [ "$DOMAIN" != "yourdomain.com" ]; then
-  sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$FOLDER
+  sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$MYNAME
   sudo nginx -t && sudo systemctl reload nginx
   sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
   # A+ snippet...
@@ -216,7 +216,7 @@ ssl_session_cache shared:SSL:10M;
 ssl_session_tickets off;
 add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
 EOF'
-  sudo sed -i '/listen 443/a include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$FOLDER
+  sudo sed -i '/listen 443/a include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$MYNAME
   sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
   echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   sudo nginx -t && sudo systemctl reload nginx
