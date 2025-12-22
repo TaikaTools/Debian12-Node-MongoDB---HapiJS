@@ -186,7 +186,7 @@ EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$FOLDER /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo rm -f /var/www/html
+sudo rm -r /var/www/html
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
 
