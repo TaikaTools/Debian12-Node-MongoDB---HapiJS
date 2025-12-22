@@ -93,6 +93,7 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
 
   mongosh admin <<EOF
 db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: "admin" } ] })
+db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
 exit
 EOF
   sudo systemctl restart mongod
@@ -100,11 +101,11 @@ EOF
   sleep 11
 
   # Create app user
-  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-use $DATABASE
-db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
-exit
-EOF
+#  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
+#use $DATABASE
+#db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
+#exit
+#EOF
 else
   echo "Auth already enabled - skipping user creation."
 fi
@@ -160,7 +161,6 @@ server {
         add_header Cache-Control \"public\";
         access_log off;
     }
-
     location /api/ {
         proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
@@ -186,12 +186,21 @@ EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$FOLDER /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo rm -f /var/www/html
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
 
 # 9. Firewall
+sudo ufw disable
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
+sudo ufw deny in on wlan0
+sudo ufw deny out on wlan0
+
+# Block all in/out IPv6
+#sudo ufw insert 1 deny in on eth0 proto ipv6
+#sudo ufw insert 1 deny out on eth0 proto ipv6
+
 sudo ufw enable
 
 # 10. SSL
