@@ -31,33 +31,13 @@ PORT=${PORT:-3003}
 read -n 1 -r -s -p "4/4 - Install Tmux [y]: " INSTALL_EXTRA
 INSTALL_EXTRA=${INSTALL_EXTRA:-y}
 
-# 2. Add User
-NAME=${NAME:-ntt}
-if ! id "$NAME" &>/dev/null; then
-    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
-    echo "Created system user: $NAME"
-fi
-
-# 3. System update & tools
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
-if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
-  sudo apt install -y htop tmux
-fi
-
-# 4. Node.js + PM2
-curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
-sudo apt install -y nodejs
-npm install pm2 -g
-pm2 update
-
-# 5. MongoDB
+# 1. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt update
 sudo apt install -y mongodb-org
 
-# 6. Hardening (always apply)
+# 2. Hardening (always apply)
 sudo mkdir -p /var/lib/mongodb /var/log/mongodb
 sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
 sudo sed -i 's/bindIp: .*/bindIp: 127.0.0.1/' /etc/mongod.conf
@@ -72,7 +52,29 @@ EOF'
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-# 7. Secrets & Users – idempotent
+sudo systemctl start mongod
+
+# 3. Add User
+NAME=${NAME:-ntt}
+if ! id "$NAME" &>/dev/null; then
+    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
+    echo "Created system user: $NAME"
+fi
+
+# 4. System update & tools
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
+if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
+  sudo apt install -y htop tmux
+fi
+
+# 5. Node.js + PM2
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
+sudo apt install -y nodejs
+npm install pm2 -g
+pm2 update
+
+# 6. Secrets & Users – idempotent
 if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   echo "First run: Generating secrets and creating users..."
 
@@ -84,9 +86,7 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   sudo sed -i '/#security:/a\security:\n  authorization: enabled' /etc/mongod.conf
 
   # Create admin without auth
-  sudo systemctl start mongod
   echo "Waiting 11 seconds for MongoDB to initialize..."
-  sleep 11
 
   mongosh admin <<EOF
 db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: "admin" } ] })
@@ -94,7 +94,7 @@ exit
 EOF
   sudo systemctl restart mongod
   echo "Waiting 11 seconds (again) for MongoDB to initialize (again)..."
-  sleep 11
+  sleep 7
 
   # Create app user
   mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
@@ -169,8 +169,7 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
-    root /var/www/html;
-    ## root /var/www/$NAME/public;
+    root /var/www/$NAME/public;
 
     location / {
         ## try_files \$uri \$uri/ =404;
@@ -187,6 +186,7 @@ EOF"
 sudo ln -sf /etc/nginx/sites-available/$NAME /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-available/default
 sudo rm -f /etc/nginx/sites-enabled/default
+sudo mv /var/www/html/index.nginx-debian.html /var/www/$NAME/public/index.html
 sudo rm -rf /var/www/html
 
 sudo nginx -t && sudo systemctl restart nginx
