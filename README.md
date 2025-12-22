@@ -8,7 +8,7 @@ A fully automated, idempotent setup script for a secure, high-performance web se
 - PM2 (production process manager with clustering)
 - Nginx (reverse proxy, fast static file serving for uploads/images)
 - Creates a dedicated non-root system user for the app
-- Optional: tmux + htop (monitoring and session persistence)
+- Optional: tmux (session persistence)
 - Interactive prompts for:
   - Domain name
   - Database name
