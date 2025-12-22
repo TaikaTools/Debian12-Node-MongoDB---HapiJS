@@ -8,7 +8,7 @@
 # - MongoDB 8.0 (secure, auth enabled)
 # - PM2 (process manager)
 # - Nginx (reverse proxy + fast static/uploads)
-# - ufw + curl + (optional: tmux + htop)
+# - ufw + curl + (optional: tmux)
 # - Creates a dedicated non-root system user for the app
 # - Creates database with prompted name
 # - Generates strong random secrets .env
@@ -19,44 +19,45 @@
 set -e  # Exit on error
 
 # 1. Prompts with defaults
-read -p "1/6 - Domain (e.g., mydomain.com, without www.): " DOMAIN
+read -p "1/4 - Domain (e.g., mydomain.com, without www.): " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain.com}
 
-read -p "2/6 - Database, Folder and User name [ntt]: " MYNAME
-MYNAME=${MYNAME:-ntt}
+read -p "2/4 - Database, Folder and User name [ntt]: " NAME
+NAME=${NAME:-ntt}
 
-read -p "4/6 - RestAPI Port [3003]: " PORT
+read -p "3/4 - RestAPI (Hapi) Port [3003]: " PORT
 PORT=${PORT:-3003}
 
-MYNAME=${MYNAME:-ntt}
-if ! id "$MYNAME" &>/dev/null; then
-    sudo adduser --system --group --no-create-home --disabled-password "$MYNAME"
-    echo "Created system user: $MYNAME"
-fi
-
-read -n 1 -r -s -p "6/6 - Install Tmux and hTop [y]: " INSTALL_EXTRA
+read -n 1 -r -s -p "4/4 - Install Tmux [y]: " INSTALL_EXTRA
 INSTALL_EXTRA=${INSTALL_EXTRA:-y}
 
-# 2. System update & tools
+# 2. Add User
+NAME=${NAME:-ntt}
+if ! id "$NAME" &>/dev/null; then
+    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
+    echo "Created system user: $NAME"
+fi
+
+# 3. System update & tools
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
 if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
   sudo apt install -y htop tmux
 fi
 
-# 3. Node.js + PM2
+# 4. Node.js + PM2
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 npm install pm2 -g
 pm2 update
 
-# 4. MongoDB
+# 5. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt update
 sudo apt install -y mongodb-org
 
-# 5. Hardening (always apply)
+# 6. Hardening (always apply)
 sudo mkdir -p /var/lib/mongodb /var/log/mongodb
 sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
 sudo sed -i 's/bindIp: .*/bindIp: 127.0.0.1/' /etc/mongod.conf
@@ -71,7 +72,7 @@ EOF'
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
-# 6. Secrets & Users – idempotent
+# 7. Secrets & Users – idempotent
 if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   echo "First run: Generating secrets and creating users..."
 
@@ -97,7 +98,7 @@ EOF
 
   # Create app user
   mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-use $MYNAME
+use $NAME
 db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
 exit
 EOF
@@ -105,26 +106,26 @@ else
   echo "Auth already enabled - skipping user creation."
 fi
 
-# 7. Project setup
-APP_DIR="/var/www/$MYNAME"
+# 8. Project setup
+APP_DIR="/var/www/$NAME"
 sudo mkdir -p $APP_DIR
-sudo chown -R "$MYNAME:$MYNAME" $APP_DIR
+sudo chown -R "$NAME:$NAME" $APP_DIR
 sudo chmod 755 $APP_DIR
 cd $APP_DIR
 
-UPLOADS_DIR="/srv/images/$MYNAME"
+UPLOADS_DIR="/srv/images/$NAME"
 sudo mkdir -p $UPLOADS_DIR
-sudo chown -R "$MYNAME:$MYNAME" $UPLOADS_DIR
+sudo chown -R "$NAME:$NAME" $UPLOADS_DIR
 sudo chmod 755 $UPLOADS_DIR
 
 sudo mkdir -p $APP_DIR/public
-sudo chown www-data:www-data $APP_DIR/$MYNAME/public
-sudo chmod 755 $APP_DIR/$MYNAME/public
+sudo chown www-data:www-data $APP_DIR/public
+sudo chmod 755 $APP_DIR/public
 
-# Save secrets to .env (only if not already present)
+# 9. Save secrets to .env (only if not already present)
 cat > .env <<EOF
 PORT=$PORT
-MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$MYNAME?authSource=$MYNAME"
+MONGODB_URI="mongodb://app:$APP_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
 JWT_SECRET=$JWT_SECRET
 ADMIN_PASS=$ADMIN_PASS
 APP_PASS=$APP_PASS
@@ -139,13 +140,13 @@ STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 EOF
 chmod 600 .env
-sudo chown "$MYNAME:$MYNAME" "$APP_DIR/.env"
+sudo chown "$NAME:$NAME" "$APP_DIR/.env"
 
 npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
 # 10. Nginx config
-sudo bash -c "cat > /etc/nginx/sites-available/$MYNAME <<'EOF'
+sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
 server {
     listen 80;
     server_name _;
@@ -170,7 +171,7 @@ server {
 
     location / {
         root /var/www/html;
-        # root /var/www/$MYNAME/public;
+        # root /var/www/$NAME/public;
         try_files \$uri \$uri/ /index.html;
         expires 1h;
         add_header Cache-Control "public";
@@ -181,7 +182,7 @@ server {
 }
 EOF"
 
-sudo ln -sf /etc/nginx/sites-available/$MYNAME /etc/nginx/sites-enabled/
+sudo ln -sf /etc/nginx/sites-available/$NAME /etc/nginx/sites-enabled/
 #sudo rm -f /etc/nginx/sites-enabled/default
 #sudo rm -r /var/www/html
 sudo chown www-data:www-data /var/www/html
@@ -190,7 +191,7 @@ sudo chmod 755 /var/www/html
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
 
-# 9. Firewall
+# 11. Firewall
 sudo ufw disable
 sudo ufw allow OpenSSH
 sudo ufw allow 'Nginx Full'
@@ -203,9 +204,9 @@ sudo ufw deny out on wlan0
 
 sudo ufw enable
 
-# 10. SSL
+# 12. SSL
 if [ "$DOMAIN" != "yourdomain.com" ]; then
-  sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$MYNAME
+  sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
   # A+ snippet...
@@ -217,19 +218,19 @@ ssl_session_cache shared:SSL:10M;
 ssl_session_tickets off;
 add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
 EOF'
-  sudo sed -i '/listen 443/a include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$MYNAME
+  sudo sed -i '/listen 443/a include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
   sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
   echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   sudo nginx -t && sudo systemctl reload nginx
 fi
 
-# 11. Cleanup
+# 13. Cleanup
 sudo apt purge -y cups* exim4* postfix* vim vim-tiny net-tools bluetooth modemmanager avahi-daemon telnet ftp nis ypbind rpcbind x11-common 2>/dev/null || true
 sudo apt autoremove -y
 sudo apt autoclean
 sudo systemctl disable --now cups bluetooth avahi-daemon 2>/dev/null || true
 
-# 12. Final
+# 14. Final
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "Admin: $ADMIN_PASS"
