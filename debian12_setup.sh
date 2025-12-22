@@ -28,8 +28,8 @@ NAME=${NAME:-ntt}
 read -p "3/4 - RestAPI (Hapi) Port [3003]: " PORT
 PORT=${PORT:-3003}
 
-read -n 1 -r -s -p "4/4 - Install Tmux [y]: " INSTALL_EXTRA
-INSTALL_EXTRA=${INSTALL_EXTRA:-y}
+read -n 1 -r -s -p "4/4 - Install Tmux [y]: " EXTRA_TOOLS
+EXTRA_TOOLS=${EXTRA_TOOLS:-y}
 
 # 2. System update
 sudo apt update && sudo apt upgrade -y
@@ -65,7 +65,7 @@ fi
 
 # 5. Tools
 sudo apt install -y ca-certificates ufw nginx certbot python3-certbot-nginx
-if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
+if [[ $EXTRA_TOOLS == "Y" || $EXTRA_TOOLS == "y" ]]; then
   sudo apt install -y tmux gnupg
 fi
 
@@ -196,15 +196,7 @@ sudo ufw deny out on wlan0
 
 sudo ufw enable
 
-# 12. Create MongoDB app user
-if [ "$DIDCREATEADMIN" != "y" ]; then
-  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-use $NAME
-db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
-exit
-EOF
-
-# 13. SSL
+# 12. SSL
 if [ "$DOMAIN" != "yourdomain.com" ]; then
   sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
@@ -224,11 +216,19 @@ EOF'
   sudo nginx -t && sudo systemctl reload nginx
 fi
 
-# 14. Cleanup
+# 13. Cleanup
 sudo apt purge -y cups* exim4* postfix* vim vim-tiny net-tools bluetooth modemmanager avahi-daemon telnet ftp nis ypbind rpcbind x11-common 2>/dev/null || true
 sudo apt autoremove -y
 sudo apt autoclean
 sudo systemctl disable --now cups bluetooth avahi-daemon 2>/dev/null || true
+
+# 14. Create MongoDB app user
+if [ "$DIDCREATEADMIN" != "y" ]; then
+  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
+use $NAME
+db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
+exit
+EOF
 
 # 15. Final
 echo "=============================================================="
