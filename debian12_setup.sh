@@ -10,7 +10,7 @@
 # - Nginx (reverse proxy + fast static/uploads)
 # - ufw + curl + (optional: tmux + htop)
 # - Creates a dedicated non-root system user for the app
-# - Creates MYNAME with prompted name
+# - Creates database with prompted name
 # - Generates strong random secrets .env
 # - installs HapiJS and miscellaneous
 # - Interactive SSL setup (Let's Encrypt, A+ ready)
@@ -19,15 +19,16 @@
 set -e  # Exit on error
 
 # 1. Prompts with defaults
-read -p "1/3 - Domain (e.g., mydomain.com, without www.): " DOMAIN
+read -p "1/6 - Domain (e.g., mydomain.com, without www.): " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain.com}
 
-read -p "2/3 - MYNAME, MYNAME and User name [ntt]: " MYNAME
+read -p "2/6 - Database, Folder and User name [ntt]: " MYNAME
 MYNAME=${MYNAME:-ntt}
 
-read -p "3/3 - RestAPI (hapi) Port [3003]: " PORT
+read -p "4/6 - RestAPI Port [3003]: " PORT
 PORT=${PORT:-3003}
 
+MYNAME=${MYNAME:-ntt}
 if ! id "$MYNAME" &>/dev/null; then
     sudo adduser --system --group --no-create-home --disabled-password "$MYNAME"
     echo "Created system user: $MYNAME"
@@ -95,7 +96,7 @@ EOF
   sleep 11
 
   # Create app user
-  mongosh -u admin -p "$ADMIN_PASS" --authenticationMYNAME admin <<EOF
+  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
 use $MYNAME
 db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
 exit
@@ -181,7 +182,7 @@ server {
 EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$MYNAME /etc/nginx/sites-enabled/
-sudo rm -f /etc/nginx/sites-enabled/default
+#sudo rm -f /etc/nginx/sites-enabled/default
 #sudo rm -r /var/www/html
 sudo chown www-data:www-data /var/www/html
 sudo chmod 755 /var/www/html
