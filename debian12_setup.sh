@@ -8,7 +8,7 @@
 # - MongoDB 8.0 (secure, auth enabled)
 # - PM2 (process manager)
 # - Nginx (reverse proxy + fast static/uploads)
-# - ufw + curl + (optional: tmux)
+# - ufw FireUncomplicated Firewall + (optional: tmux)
 # - Creates a dedicated non-root system user for the app
 # - Creates database with prompted name
 # - Generates strong random secrets .env
@@ -31,13 +31,15 @@ PORT=${PORT:-3003}
 read -n 1 -r -s -p "4/4 - Install Tmux [y]: " INSTALL_EXTRA
 INSTALL_EXTRA=${INSTALL_EXTRA:-y}
 
-# 1. MongoDB
+# 2. MongoDB
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y gnupg
+
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
-sudo apt update
 sudo apt install -y mongodb-org
 
-# 2. Hardening (always apply)
+# 3. Hardening (always apply)
 sudo mkdir -p /var/lib/mongodb /var/log/mongodb
 sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
 sudo sed -i 's/bindIp: .*/bindIp: 127.0.0.1/' /etc/mongod.conf
@@ -54,29 +56,30 @@ echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 sudo systemctl start mongod
 
-# 3. Add User
+# 4. Add User
 NAME=${NAME:-ntt}
 if ! id "$NAME" &>/dev/null; then
     sudo adduser --system --group --no-create-home --disabled-password "$NAME"
     echo "Created system user: $NAME"
 fi
 
-# 4. System update & tools
-sudo apt update && sudo apt upgrade -y
-sudo apt install -y ca-certificates curl gnupg ufw nginx certbot python3-certbot-nginx
+# 5. System update & tools
+sudo apt install -y ca-certificates ufw nginx certbot python3-certbot-nginx
 if [[ $INSTALL_EXTRA == "Y" || $INSTALL_EXTRA == "y" ]]; then
-  sudo apt install -y htop tmux
+  sudo apt install -y tmux gnupg
 fi
 
-# 5. Node.js + PM2
+# 6. Node.js + PM2
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt install -y nodejs
 npm install pm2 -g
 pm2 update
 
-# 6. Secrets & Users – idempotent
+# 7. Secrets & Users – idempotent
+DIDCREATEADMIN=${DIDCREATEADMIN:-n}
 if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   echo "First run: Generating secrets and creating users..."
+  DIDCREATEADMIN=${DIDCREATEADMIN:-y}
 
   ADMIN_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 64)
   APP_PASS=$(head /dev/urandom | tr -dc A-Za-z0-9 | head -c 64)
@@ -86,22 +89,11 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   sudo sed -i '/#security:/a\security:\n  authorization: enabled' /etc/mongod.conf
 
   # Create admin without auth
-  echo "Waiting 11 seconds for MongoDB to initialize..."
-
   mongosh admin <<EOF
 db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: "admin" } ] })
 exit
 EOF
   sudo systemctl restart mongod
-  echo "Waiting 11 seconds (again) for MongoDB to initialize (again)..."
-  sleep 7
-
-  # Create app user
-  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-use $NAME
-db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
-exit
-EOF
 else
   echo "Auth already enabled - skipping user creation."
 fi
@@ -205,7 +197,15 @@ sudo ufw deny out on wlan0
 
 sudo ufw enable
 
-# 12. SSL
+# 12. Create MongoDB app user
+if [ "$DIDCREATEADMIN" != "y" ]; then
+  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
+use $NAME
+db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
+exit
+EOF
+
+# 13. SSL
 if [ "$DOMAIN" != "yourdomain.com" ]; then
   sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
@@ -225,13 +225,13 @@ EOF'
   sudo nginx -t && sudo systemctl reload nginx
 fi
 
-# 13. Cleanup
+# 14. Cleanup
 sudo apt purge -y cups* exim4* postfix* vim vim-tiny net-tools bluetooth modemmanager avahi-daemon telnet ftp nis ypbind rpcbind x11-common 2>/dev/null || true
 sudo apt autoremove -y
 sudo apt autoclean
 sudo systemctl disable --now cups bluetooth avahi-daemon 2>/dev/null || true
 
-# 14. Final
+# 15. Final
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "Admin: $ADMIN_PASS"
