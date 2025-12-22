@@ -93,7 +93,6 @@ if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
 
   mongosh admin <<EOF
 db.createUser({ user: "admin", pwd: "$ADMIN_PASS", roles: [ { role: "root", db: "admin" } ] })
-db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
 exit
 EOF
   sudo systemctl restart mongod
@@ -101,11 +100,11 @@ EOF
   sleep 11
 
   # Create app user
-#  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
-#use $DATABASE
-#db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
-#exit
-#EOF
+  mongosh -u admin -p "$ADMIN_PASS" --authenticationDatabase admin <<EOF
+use $DATABASE
+db.createUser({ user: "app", pwd: "$APP_PASS", roles: [ "readWrite" ] })
+exit
+EOF
 else
   echo "Auth already enabled - skipping user creation."
 fi
@@ -186,7 +185,7 @@ EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$FOLDER /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-enabled/default
-sudo rm -r /var/www/html
+#sudo rm -r /var/www/html
 sudo nginx -t && sudo systemctl restart nginx
 sudo systemctl enable nginx
 
