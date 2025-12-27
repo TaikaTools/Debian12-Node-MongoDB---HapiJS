@@ -40,11 +40,11 @@ EXTRA_TOOLS=${EXTRA_TOOLS:-y}
 # 2. System update
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y gnupg
-sudo apt-get update -y
 
 # 3. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
+sudo apt-get update -y
 sudo apt install -y mongodb-org
 
 # 4. Hardening (always apply)
@@ -252,7 +252,7 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   sudo sed -i "s/#!#!# server_name/server_name/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   if [ "$CERT" != "fake" ]; then
-    sudo certbot --nginx --dry-run -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
     #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
     # A+ snippet...
     sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
@@ -263,11 +263,11 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   ssl_session_tickets off;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
-    sudo sed -i '/listen 443/a include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen [::]:443;/a    include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
     sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
     echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   else
-    sudo certbot --nginx --dry-run -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
 
     echo "step to make";
     #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
