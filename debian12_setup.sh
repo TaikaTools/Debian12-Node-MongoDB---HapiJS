@@ -117,7 +117,7 @@ sudo chown -R www-data:www-data $APP_DIR
 sudo chmod 755 $APP_DIR
 cd $APP_DIR
 
-IMAGES_DIR="/srv/images/$NAME"
+IMAGES_DIR="/srv/images"
 sudo mkdir -p $IMAGES_DIR
 sudo chown -R "$NAME:$NAME" $IMAGES_DIR
 sudo chown -R www-data:www-data $IMAGES_DIR
@@ -162,11 +162,12 @@ npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert m
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
 server {
-    listen 443;
-    listen [::]:443;
 
-    #!#!# server_name $DOMAIN www.$DOMAIN;
+    listen 80;
+    listen [::]:80;
 
+    server_name _;
+    
     # ssl_certificate /etc/ssl/private/selfsigned.crt;
     # ssl_certificate_key /etc/ssl/private/selfsigned.key;
 
@@ -192,8 +193,6 @@ server {
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         # proxy_set_header X-Forwarded-Proto \$scheme;
-
-        proxy_pass_header Set-Cookie;
         proxy_cookie_path / /api/;
         proxy_buffering off;
         
@@ -242,7 +241,7 @@ sudo ufw enable
 
 # 12. SSL
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
-  sudo sed -i "s/#!#!# server_name/server_name/" /etc/nginx/sites-available/$NAME
+  sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   if [ "$CERT" != "fake" ]; then
     sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
@@ -256,14 +255,12 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   ssl_session_tickets off;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
-    sudo sed -i '/listen [::]:443;/a    include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
     sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
     echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   else
     sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
-
     echo "step to make";
-    #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
   fi
   sudo nginx -t && sudo systemctl reload nginx
 fi
@@ -289,6 +286,9 @@ echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "Admin: $ADMIN_PASS"
 echo "App: $APP_PASS"
 echo "JWT: $JWT_SECRET"
+
+echo "WWW Folder: $APP_DIR"
+echo "Image Folder: $IMAGE_DIR"
 
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
 echo "ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;"
