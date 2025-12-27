@@ -245,20 +245,25 @@ sudo ufw allow 'Nginx Full'
 sudo ufw deny in on wlan0
 sudo ufw deny out on wlan0
 
-# Block all in/out IPv6
-#sudo ufw insert 1 deny in on eth0 proto ipv6
-#sudo ufw insert 1 deny out on eth0 proto ipv6
-
-sudo ufw enable
+sudo ufw --force enable
 
 # 12. SSL
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   if [ "$CERT" == "real" ]; then
-    sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN" \
+        --non-interactive \
+        --agree-tos \
+        --no-eff-email \
+        -m "admin@$DOMAIN"
   else
-    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx --test-cert \
+        -d "$DOMAIN" -d "www.$DOMAIN" \
+        --non-interactive \
+        --agree-tos \
+        --no-eff-email \
+        -m "admin@$DOMAIN"
   fi
     # A+ snippet...
     sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
@@ -270,20 +275,32 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
   
-  sudo sed -i '/listen 443/a\tinclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
+  sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
   sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
   echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
 else
   if [[ $PUBLIC_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-          -keyout /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key \
-          -out /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt \
+          -keyout /etc/ssl/private/$NAME-selfsigned.key \
+          -out /etc/ssl/certs/$NAME-selfsigned.crt \
           -subj "/CN=$PUBLIC_IP" \
           -addext "subjectAltName = IP:$PUBLIC_IP,DNS:localhost,IP:127.0.0.1"
 
       sudo sed -i "s/listen 80;/listen 443;/" /etc/nginx/sites-available/$NAME
-      #sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt; ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
-      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|\tssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt;\n\tssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;|" /etc/nginx/sites-available/$NAME
+      #sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt; ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
+      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|    ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;|" /etc/nginx/sites-available/$NAME
+
+      sudo bash -c "cat >> /etc/nginx/sites-available/$NAME <<'EOF'
+/n
+server {
+    listen 80;
+
+    server_name _;
+
+    return 301 https://\$host\$request_uri;
+}
+EOF"
+
   else
       echo "Could not determine public IP — skipping self-signed cert"
   fi
