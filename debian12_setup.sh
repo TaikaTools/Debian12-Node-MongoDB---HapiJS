@@ -163,6 +163,8 @@ server {
 
     server_name _;
     
+    #!INJECT!SELF!SIGNED!CERT!#
+
     location /images/ {
         alias $IMAGES_DIR/;
         expires 27d;
@@ -231,9 +233,12 @@ sudo ufw enable
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
-  if [ "$CERT" != "fake" ]; then
-    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
+  if [ "$CERT" == "real" ]; then
     #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
+  else
+    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
+  fi
     # A+ snippet...
     sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
   ssl_protocols TLSv1.2 TLSv1.3;
@@ -243,15 +248,21 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   ssl_session_tickets off;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
-    sudo sed -i '/listen 443/ainclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
-    sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
-    echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
-  else
-    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
-    echo "step to make";
-  fi
-  sudo nginx -t && sudo systemctl reload nginx
+  
+  sudo sed -i '/listen 443/ainclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
+  sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
+  echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
+else
+  echo "Selfsigned cert, steps to make";
+  sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+      -keyout /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key \
+      -out /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt \
+      -subj "/CN=46.62.255.208"
+
+  sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt;ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
 fi
+
+sudo nginx -t && sudo systemctl reload nginx
 
 # 13. Cleanup
 sudo apt purge -y cups* exim4* postfix* vim vim-tiny net-tools bluetooth modemmanager avahi-daemon telnet ftp nis ypbind rpcbind x11-common 2>/dev/null || true
