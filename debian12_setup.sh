@@ -156,26 +156,13 @@ sudo chown "$NAME:$NAME" "$APP_DIR/.env"
 npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
-
-
-
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
 server {
-
     listen 80;
-    listen [::]:80;
 
     server_name _;
     
-    # ssl_certificate /etc/ssl/private/selfsigned.crt;
-    # ssl_certificate_key /etc/ssl/private/selfsigned.key;
-
-    #%#%# ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
-    #%#%# ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    #%#%# include /etc/letsencrypt/options-ssl-nginx.conf;
-    #%#%# ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
-
     location /images/ {
         alias $IMAGES_DIR/;
         expires 27d;
@@ -206,6 +193,7 @@ server {
     }
 
     root /var/www/$NAME/public;
+    index index.html;
 
     location / {
         try_files \$uri \$uri/ /index.html;
@@ -255,7 +243,7 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   ssl_session_tickets off;
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
-    sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf;' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen 443/ainclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
     sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
     echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   else
@@ -288,11 +276,7 @@ echo "App: $APP_PASS"
 echo "JWT: $JWT_SECRET"
 
 echo "WWW Folder: $APP_DIR"
-echo "Image Folder: $IMAGE_DIR"
+echo "Image Folder: $IMAGES_DIR"
 
-if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
-echo "ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;"
-echo "ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;"
-fi
 echo "cd $APP_DIR && add server.js + ecosystem.config.js"
 echo "=============================================================="
