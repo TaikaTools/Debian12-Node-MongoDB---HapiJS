@@ -156,25 +156,11 @@ sudo chown "$NAME:$NAME" "$APP_DIR/.env"
 npm init -y > /dev/null 2>&1
 npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
 
+
+
+
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
-
-server {
-    listen 80;
-    listen [::]:80;
-
-    #!#!# server_name $DOMAIN www.$DOMAIN;
-
-    location /images/ {
-        alias $IMAGES_DIR/;
-        expires 27d;
-        add_header Cache-Control "public";
-        access_log off;
-    }
-
-    return 301 https://\$host\$request_uri;
-}
-
 server {
     listen 443;
     listen [::]:443;
@@ -188,6 +174,13 @@ server {
     #%#%# ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
     #%#%# include /etc/letsencrypt/options-ssl-nginx.conf;
     #%#%# ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    location /images/ {
+        alias $IMAGES_DIR/;
+        expires 27d;
+        add_header Cache-Control "public";
+        access_log off;
+    }
 
     location /api/ {
         rewrite ^/api/(.*) /\$1 break;
