@@ -6,7 +6,7 @@
 # This script installs:
 # - Node.js 24.x LTS
 # - MongoDB 8.0 (secure, auth enabled)
-# - Nginx (reverse proxy + fast static/uploads)
+# - Nginx (reverse proxy + fast static/images)
 # - Hapi.js for RestAPI, Auth, logic and database
 # - PM2 (process manager)
 # - ufw FireUncomplicated Firewall + (optional: tmux)
@@ -16,6 +16,27 @@
 # - Hardening security, tweaking performance
 
 set -e  # Exit on error
+
+get_public_ip() {
+    local ip
+    ip=$(dig +short myip.opendns.com @resolver1.opendns.com 2>/dev/null)
+    if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "$ip"
+        return
+    fi
+    for url in "https://ipinfo.io/ip" "https://ifconfig.me" "https://api.ipify.org" "https://checkip.amazonaws.com"; do
+        ip=$(curl -s --max-time 5 "$url")
+        if [[ $ip =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "$ip"
+            return
+        fi
+    done
+    echo "Failed to get public IP" >&2
+    return 1
+}
+
+PUBLIC_IP=$(get_public_ip)
+echo "Server public IP: $PUBLIC_IP"
 
 # 1. Prompts with defaults
 read -p "1/5 - Domain (e.g., mydomain.com, without www.), blank for no domain []: " DOMAIN
@@ -136,6 +157,7 @@ sudo chmod 755 $APP_DIR/logs
 # 9. Save secrets to .env (only if not already present)
 cat > .env <<EOF
 DOMAIN=$DOMAIN
+HOST=127.0.0.1
 PORT=$PORT
 UPLOADS_PATH=$IMAGES_DIR
 NAMEUSERFOLDER=$NAME
@@ -234,8 +256,7 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   sudo sed -i "s/server_name _;/server_name $DOMAIN www.$DOMAIN;/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   if [ "$CERT" == "real" ]; then
-    #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
-    sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
+    sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
   else
     sudo certbot --nginx --test-cert -d "$DOMAIN" -d "www.$DOMAIN"
   fi
@@ -249,17 +270,23 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
   
-  sudo sed -i '/listen 443/ainclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
+  sudo sed -i '/listen 443/a\tinclude /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
   sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
   echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
 else
-  echo "Selfsigned cert, steps to make";
-  sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
-      -keyout /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key \
-      -out /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt \
-      -subj "/CN=46.62.255.208"
+  if [[ $PUBLIC_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+          -keyout /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key \
+          -out /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt \
+          -subj "/CN=$PUBLIC_IP" \
+          -addext "subjectAltName = IP:$PUBLIC_IP,DNS:localhost,IP:127.0.0.1"
 
-  sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt;ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
+      sudo sed -i "s/listen 80;/listen 443;/" /etc/nginx/sites-available/$NAME
+      #sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt; ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
+      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|\tssl_certificate /etc/ssl/certs/$NAMEUSERFOLDER-selfsigned.crt;\n\tssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;|" /etc/nginx/sites-available/$NAME
+  else
+      echo "Could not determine public IP — skipping self-signed cert"
+  fi
 fi
 
 sudo nginx -t && sudo systemctl reload nginx
