@@ -252,6 +252,7 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   sudo sed -i "s/#!#!# server_name/server_name/" /etc/nginx/sites-available/$NAME
   sudo nginx -t && sudo systemctl reload nginx
   if [ "$CERT" != "fake" ]; then
+    sudo certbot --nginx --dry-run -d "$DOMAIN" -d "www.$DOMAIN"
     #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
     # A+ snippet...
     sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
@@ -266,6 +267,8 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
     sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
     echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
   else
+    sudo certbot --nginx --dry-run -d "$DOMAIN" -d "www.$DOMAIN"
+
     echo "step to make";
     #sudo certbot --nginx -d "$DOMAIN" -d "www.$DOMAIN"
   fi
