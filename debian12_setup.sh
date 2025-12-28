@@ -228,6 +228,7 @@ server {
 
     location ~ /\.env { deny all; }
 }
+
 EOF"
 
 sudo ln -sf /etc/nginx/sites-available/$NAME /etc/nginx/sites-enabled/
@@ -276,7 +277,7 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
   EOF'
   
-  sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
+  sudo sed -i '/listen 443/a\n    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not CertBot)' /etc/nginx/sites-available/$NAME
   sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
   echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
 else
@@ -288,13 +289,13 @@ else
           -addext "subjectAltName = IP:$PUBLIC_IP,DNS:localhost,IP:127.0.0.1"
 
       sudo sed -i "s/listen 80;/listen 443 ssl;/" /etc/nginx/sites-available/$NAME
-      sudo sed -i "s/listen [::]:80;/listen [::]:443 ssl;/" /etc/nginx/sites-available/$NAME
-      
-      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;|" /etc/nginx/sites-available/$NAME
-
+      sudo sed -i "s/listen [::]:80;/listen [::]:443 ssl;/" /etc/nginx/sites-available/$NAME      
+      #sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;|" /etc/nginx/sites-available/$NAME
+      sudo sed -i "/server_name _;/a\n    ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;" /etc/nginx/sites-available/$NAME
       sudo bash -c "cat >> /etc/nginx/sites-available/$NAME <<'EOF'
 server {
     listen 80;
+    listen [::]:80;
 
     server_name _;
 
@@ -327,12 +328,17 @@ fi
 # 15. Final
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
-echo "Admin: $ADMIN_PASS"
-echo "App: $APP_PASS"
-echo "JWT: $JWT_SECRET"
+echo "MongoDB Admin: $ADMIN_PASS"
+echo "MongoDB App:   $APP_PASS"
+echo "JWT Secret:    $JWT_SECRET"
 
-echo "WWW Folder: $APP_DIR"
-echo "Image Folder: $IMAGES_DIR"
-
-echo "cd $APP_DIR && add server.js + ecosystem.config.js"
+echo "WWW Folder:    $APP_DIR"
+echo "Image Folder:  $IMAGES_DIR"
+if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
+echo "SSL email:     admin@$DOMAIN"
+fi
+echo "add server.js + pm2.js"
 echo "=============================================================="
+
+cd $APP_DIR
+ls
