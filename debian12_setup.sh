@@ -45,30 +45,47 @@ DOMAIN=${DOMAIN:-yourdomain_dot_com}
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
   read -p "2/5 - CertBot: fake or real (type real) []" CERT
 else
-  echo "No Domain, skipping 2/5"
+  echo "2/5 - No Domain, skipping"
 fi
 CERT=${CERT:-fake}
 
-read -p "3/5 - Database, Folder and User name [ntt]: " NAME
-NAME=${NAME:-ntt}
-
-read -p "4/5 - RestAPI (Hapi) Port [3003]: " PORT
+read -p "3/5 - RestAPI (Hapi) Port [3003]: " PORT
 PORT=${PORT:-3003}
 
-read -n 1 -r -s -p "5/5 - Install Tmux [y]: " EXTRA_TOOLS
+read -n 1 -r -s -p "4/5 - Install Tmux [y]: " EXTRA_TOOLS
 EXTRA_TOOLS=${EXTRA_TOOLS:-y}
 
-# 2. System update
+read -p "5/5 - Database, Folder and User name [ntt]: " NAME
+NAME=${NAME:-ntt}
+
+# 2. Add User
+NAME=${NAME:-ntt}
+if ! id "$NAME" &>/dev/null; then
+    echo "SFTP password:"
+    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
+    sudo usermod -s /bin/bash "$NAME"
+
+    # Generate a strong 32-char password (letters, digits, symbols)
+    GEN_PASS=$(openssl rand -base64 48 | tr -dc 'A-Za-z0-9!@#$%^&*()' | head -c32)
+
+    # Set it for the user (non-interactive)
+    echo "$NAME:$GEN_PASS" | sudo chpasswd
+
+    # Optional: Show it (for logging or user)
+    echo "Generated password for user: $NAME: $GEN_PASS"
+fi
+
+# 3. System update
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y gnupg
 
-# 3. MongoDB
+# 4. MongoDB
 curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] https://repo.mongodb.org/apt/debian bookworm/mongodb-org/8.0 main" | sudo tee /etc/apt/sources.list.d/mongodb-org-8.0.list
 sudo apt-get update -y
 sudo apt install -y mongodb-org
 
-# 4. Hardening (always apply)
+# 5. Hardening (always apply)
 sudo mkdir -p /var/lib/mongodb /var/log/mongodb
 sudo chown -R mongodb:mongodb /var/lib/mongodb /var/log/mongodb
 sudo sed -i 's/bindIp: .*/bindIp: 127.0.0.1/' /etc/mongod.conf
@@ -84,15 +101,6 @@ echo never | sudo tee /sys/kernel/mm/transparent_hugepage/enabled
 echo never | sudo tee /sys/kernel/mm/transparent_hugepage/defrag
 
 sudo systemctl start mongod
-
-# 4. Add User
-NAME=${NAME:-ntt}
-if ! id "$NAME" &>/dev/null; then
-    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
-    sudo usermod -s /bin/bash "$NAME"
-    sudo passwd "$NAME"
-    echo "Created system user: $NAME"
-fi
 
 # 5. Tools
 sudo apt install -y ufw nginx
@@ -356,10 +364,10 @@ sudo mount -a
 # Restart MongoDB
 sudo systemctl start mongod
 
-sudo systemctl restart ssh
 sudo chown -R "$NAME:$NAME" "/var/www/ntt"
 #sudo chown -R www-data:www-data "/var/www/ntt"
 sudo chmod 755 "/var/www/ntt"
+sudo systemctl restart ssh
 cd $APP_DIR
 
 # 16. Final
@@ -371,6 +379,7 @@ echo "JWT Secret:    $JWT_SECRET"
 
 echo "WWW Folder:    $APP_DIR"
 echo "Image Folder:  $IMAGES_DIR"
+echo "SFTP password: $GEN_PASS"
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
 echo "SSL email:     admin@$DOMAIN  (Certbot)"
 fi
