@@ -38,29 +38,25 @@ PUBLIC_IP=$(get_public_ip)
 echo "Server public IP: $PUBLIC_IP"
 
 # 1. Prompts with defaults
-read -p "1/5 - Domain (e.g., mydomain.com, without www.), blank for no domain []: " DOMAIN
+read -p "1/4 - Domain (e.g., mydomain.com, without www.), blank for no domain []: " DOMAIN
 DOMAIN=${DOMAIN:-yourdomain_dot_com}
 
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
-  read -p "2/5 - CertBot: fake or real (type real) []" CERT
+  read -p "2/4 - CertBot: fake or real (type real) []" CERT
 else
-  echo "2/5 - No Domain, skipping"
+  echo "2/4 - No Domain, skipping"
 fi
 CERT=${CERT:-fake}
+echo "cert is: $CERT"
 
-read -p "3/5 - RestAPI (Hapi) Port [3003]: " PORT
+read -p "3/4 - RestAPI (Hapi) Port [3003]: " PORT
 PORT=${PORT:-3003}
 
-read -n 1 -r -s -p "4/5 - Install Tmux [y]: " EXTRA_TOOLS
-EXTRA_TOOLS=${EXTRA_TOOLS:-y}
-
-read -p "5/5 - Database, Folder and User name [ntt]: " NAME
+read -p "4/4 - Database, Folder and User name [ntt]: " NAME
 NAME=${NAME:-ntt}
 
 # 2. Add User
 if ! id "$NAME" &>/dev/null; then
-    echo "SFTP password:"
-    echo " "
     sudo adduser --system --group --no-create-home --disabled-password "$NAME"
     sudo usermod -s /bin/bash "$NAME"
 
@@ -104,10 +100,7 @@ sudo systemctl start mongod
 # 5. Tools
 sudo apt install -y ufw nginx
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
-  sudo apt install -y ca-certificates certbot python3-certbot-nginx
-fi
-if [[ $EXTRA_TOOLS == "Y" || $EXTRA_TOOLS == "y" ]]; then
-  sudo apt install -y tmux
+  sudo apt install -y ca-certificates certbot python3-certbot-nginx tmux
 fi
 
 # 6. Node.js + PM2
@@ -150,8 +143,7 @@ cd $APP_DIR
 
 IMAGES_DIR="/srv/images"
 sudo mkdir -p $IMAGES_DIR
-sudo chown -R "$NAME:$NAME" $IMAGES_DIR
-#sudo chown -R www-data:www-data $IMAGES_DIR
+sudo chown -R www-data:www-data $IMAGES_DIR
 sudo chmod 755 $IMAGES_DIR
 
 sudo mkdir -p $APP_DIR/public
@@ -159,8 +151,7 @@ sudo chown -R www-data:www-data $APP_DIR/public
 sudo chmod 755 $APP_DIR/public
 
 sudo mkdir -p $APP_DIR/logs
-sudo chown -R "$NAME:$NAME" $APP_DIR/logs
-#sudo chown www-data:www-data $APP_DIR/logs
+sudo chown www-data:www-data $APP_DIR/logs
 sudo chmod 755 $APP_DIR/logs
 
 # 9. Save secrets to .env (only if not already present)
@@ -198,6 +189,7 @@ server {
     location /images/ {
         alias $IMAGES_DIR/;
         expires 27d;
+        add_header Access-Control-Allow-Origin "*" always;
         add_header Cache-Control "public";
         access_log off;
     }
@@ -268,8 +260,8 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
         --no-eff-email \
         -m "admin@$DOMAIN"
   fi
-    sudo sed -i '/listen 443/a    ssl_session_cache shared:SSL:11M;' /etc/nginx/sites-available/$NAME
     sudo sed -i '/listen 443/a    add_header Strict-Transport-Security "max-age=62772772; includeSubDomains; preload" always;' /etc/nginx/sites-available/$NAME
+    sudo sed -i "/listen 443/a    ssl_session_cache shared:SSL:11M;" /etc/nginx/sites-available/$NAME
 else
   if [[ $PUBLIC_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -317,59 +309,61 @@ exit
 EOF
 fi
 
-# 15. Inits
-# Example: Format and mount XFS volumes (adjust device names)
-# MongoDB data on /dev/sdb (e.g., 100GB volume)
-if [ -b /dev/sdb ]; then
-    echo "Setting up XFS for MongoDB on /dev/sdb..."
-    sudo mkfs.xfs -f /dev/sdb
-    sudo mkdir -p /mongodb-data
-    sudo mount /dev/sdb /mongodb-data
-    UUID_MONGO=$(sudo blkid -s UUID -o value /dev/sdb)
-    echo "UUID=$UUID_MONGO /mongodb-data xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
-    sudo rsync -av /var/lib/mongodb/ /mongodb-data/   # Copy existing data if any
-    sudo systemctl stop mongod
-    sudo mv /var/lib/mongodb /var/lib/mongodb.bak   # Backup
-    sudo ln -s /mongodb-data /var/lib/mongodb       # Symlink or update dbPath in conf
-    sudo chown -R mongodb:mongodb /mongodb-data
+# 15. Format and mount XFS volumes (if present)
+if [ -b /dev/sdb ] || [ -b /dev/sdc ]; then
+  # MongoDB data on /dev/sdb
+  if [ -b /dev/sdb ]; then
+      echo "Setting up XFS for MongoDB on /dev/sdb..."
+      sudo mkfs.xfs -f /dev/sdb
+      sudo mkdir -p /mongodb-data
+      sudo mount /dev/sdb /mongodb-data
+      UUID_MONGO=$(sudo blkid -s UUID -o value /dev/sdb)
+      echo "UUID=$UUID_MONGO /mongodb-data xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
+      sudo rsync -av /var/lib/mongodb/ /mongodb-data/   # Copy existing data if any
+      sudo systemctl stop mongod
+      sudo mv /var/lib/mongodb /var/lib/mongodb.bak   # Backup
+      sudo ln -s /mongodb-data /var/lib/mongodb       # Symlink or update dbPath in conf
+      sudo chown -R mongodb:mongodb /mongodb-data
+  fi
+
+  # Images on /dev/sdc
+  if [ -b /dev/sdc ]; then
+      echo "Setting up XFS for images on /dev/sdc..."
+      sudo mkfs.xfs -f /dev/sdc
+      sudo mount /dev/sdc /srv/images
+      UUID_IMAGES=$(sudo blkid -s UUID -o value /dev/sdc)
+      echo "UUID=$UUID_IMAGES /srv/images xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
+      sudo chown -R www-data:www-data /srv/images
+      sudo chmod 755 /srv/images
+  fi
+
+  # Mount all (in case of reboot in script)
+  sudo mount -a
+
+  # Restart MongoDB
+  sudo systemctl start mongod
 fi
 
-# Images on /dev/sdc (e.g., 200GB volume)
-if [ -b /dev/sdc ]; then
-    echo "Setting up XFS for images on /dev/sdc..."
-    sudo mkfs.xfs -f /dev/sdc
-    sudo mount /dev/sdc /srv/images
-    UUID_IMAGES=$(sudo blkid -s UUID -o value /dev/sdc)
-    echo "UUID=$UUID_IMAGES /srv/images xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
-    sudo chown -R "$NAME:$NAME" /srv/images   # Or www-data
-    sudo chmod 755 /srv/images
-fi
-
-# Mount all (in case of reboot in script)
-sudo mount -a
-
-# Restart MongoDB
-sudo systemctl start mongod
-
-sudo chown -R "$NAME:$NAME" "/var/www/ntt"
-#sudo chown -R www-data:www-data "/var/www/ntt"
-sudo chmod 755 "/var/www/ntt"
+sudo chown -R "$NAME:$NAME" $APP_DIR
+#sudo chown -R www-data:www-data $APP_DIR
+sudo chmod 755 $APP_DIR
 sudo systemctl restart ssh
 cd $APP_DIR
 
 # 16. Final
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
+echo " "
 echo "MongoDB Admin: $ADMIN_PASS"
 echo "MongoDB App:   $APP_PASS"
 echo "JWT Secret:    $JWT_SECRET"
-
+echo " "
 echo "WWW Folder:    $APP_DIR"
 echo "Image Folder:  $IMAGES_DIR"
 echo "username:      $NAME"
 echo "SFTP password: $GEN_PASS"
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
-echo "SSL email:     admin@$DOMAIN  (Certbot)"
+echo "SSL email:     admin@$DOMAIN  (Certbot $CERT)"
 fi
 echo " "
 echo "add server.js + pm2.js"
