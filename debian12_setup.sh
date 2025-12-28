@@ -182,6 +182,7 @@ npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert m
 sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
 server {
     listen 80;
+    listen [::]:80;
 
     server_name _;
     
@@ -286,12 +287,12 @@ else
           -subj "/CN=$PUBLIC_IP" \
           -addext "subjectAltName = IP:$PUBLIC_IP,DNS:localhost,IP:127.0.0.1"
 
-      sudo sed -i "s/listen 80;/listen 443;/" /etc/nginx/sites-available/$NAME
-      #sudo sed -i "s/#!INJECT!SELF!SIGNED!CERT!#/ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt; ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;/" /etc/nginx/sites-available/$NAME
-      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|    ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAMEUSERFOLDER-selfsigned.key;|" /etc/nginx/sites-available/$NAME
+      sudo sed -i "s/listen 80;/listen 443 ssl;/" /etc/nginx/sites-available/$NAME
+      sudo sed -i "s/listen [::]:80;/listen [::]:443 ssl;/" /etc/nginx/sites-available/$NAME
+      
+      sudo sed -i "s|#!INJECT!SELF!SIGNED!CERT!#|ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;|" /etc/nginx/sites-available/$NAME
 
       sudo bash -c "cat >> /etc/nginx/sites-available/$NAME <<'EOF'
-/n
 server {
     listen 80;
 
