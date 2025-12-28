@@ -89,6 +89,8 @@ sudo systemctl start mongod
 NAME=${NAME:-ntt}
 if ! id "$NAME" &>/dev/null; then
     sudo adduser --system --group --no-create-home --disabled-password "$NAME"
+    sudo usermod -s /bin/bash "$NAME"
+    sudo passwd "$NAME"
     echo "Created system user: $NAME"
 fi
 
@@ -133,6 +135,7 @@ fi
 # 8. Project setup
 APP_DIR="/var/www/$NAME"
 sudo mkdir -p $APP_DIR
+sudo chown root:root /var/www
 sudo chown -R "$NAME:$NAME" $APP_DIR
 #sudo chown -R www-data:www-data $APP_DIR
 sudo chmod 755 $APP_DIR
@@ -197,22 +200,17 @@ server {
         rewrite ^/api/(.*) /\$1 break;
         proxy_pass http://127.0.0.1:$PORT;
         proxy_http_version 1.1;
-        # proxy_set_header Upgrade \$http_upgrade;
-        # proxy_set_header Connection \"upgrade\";
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection \"upgrade\";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        # proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cookie_path / /api/;
         proxy_buffering off;
         
-        # proxy_cookie_domain localhost \$host; #Optional: If backend sets a domain, rewrite it (rare for localhost)
         # proxy_redirect off;
-        # proxy_set_header X-Forwarded-For \$remote_addr;
-        # proxy_set_header X-Forwarded-Proto https;
         # proxy_intercept_errors on;
-        # add_header X-Cache-Status \$upstream_cache_status;        
-        # proxy_ssl_verify off; #Required for SSL passthrough
     }
 
     root /var/www/$NAME/public;
@@ -324,13 +322,47 @@ exit
 EOF
 fi
 
-# 15. Final
+# 15. Inits
+# Example: Format and mount XFS volumes (adjust device names)
+# MongoDB data on /dev/sdb (e.g., 100GB volume)
+if [ -b /dev/sdb ]; then
+    echo "Setting up XFS for MongoDB on /dev/sdb..."
+    sudo mkfs.xfs -f /dev/sdb
+    sudo mkdir -p /mongodb-data
+    sudo mount /dev/sdb /mongodb-data
+    UUID_MONGO=$(sudo blkid -s UUID -o value /dev/sdb)
+    echo "UUID=$UUID_MONGO /mongodb-data xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
+    sudo rsync -av /var/lib/mongodb/ /mongodb-data/   # Copy existing data if any
+    sudo systemctl stop mongod
+    sudo mv /var/lib/mongodb /var/lib/mongodb.bak   # Backup
+    sudo ln -s /mongodb-data /var/lib/mongodb       # Symlink or update dbPath in conf
+    sudo chown -R mongodb:mongodb /mongodb-data
+fi
 
+# Images on /dev/sdc (e.g., 200GB volume)
+if [ -b /dev/sdc ]; then
+    echo "Setting up XFS for images on /dev/sdc..."
+    sudo mkfs.xfs -f /dev/sdc
+    sudo mount /dev/sdc /srv/images
+    UUID_IMAGES=$(sudo blkid -s UUID -o value /dev/sdc)
+    echo "UUID=$UUID_IMAGES /srv/images xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
+    sudo chown -R "$NAME:$NAME" /srv/images   # Or www-data
+    sudo chmod 755 /srv/images
+fi
+
+# Mount all (in case of reboot in script)
+sudo mount -a
+
+# Restart MongoDB
+sudo systemctl start mongod
+
+sudo systemctl restart ssh
 sudo chown -R "$NAME:$NAME" "/var/www/ntt"
 #sudo chown -R www-data:www-data "/var/www/ntt"
 sudo chmod 755 "/var/www/ntt"
 cd $APP_DIR
 
+# 16. Final
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "MongoDB Admin: $ADMIN_PASS"
