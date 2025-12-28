@@ -1,19 +1,18 @@
 #!/bin/bash
 
-# ===================================================
-# SETUP Debian 12 - Node.js + Hapi + MongoDB + Nginx 
-# ===================================================
 # This script installs:
 # - Node.js 24.x LTS
 # - MongoDB 8.0 (secure, auth enabled)
 # - Nginx (reverse proxy + fast static/images)
-# - Hapi.js for RestAPI, Auth, logic and database
-# - PM2 (process manager)
-# - ufw FireUncomplicated Firewall + (optional: tmux)
+# - Hapi.js for REST API, auth, logic, and database
+# - PM2 (process manager with clustering)
+# - ufw (Uncomplicated Firewall)
+# - Optional: tmux for session persistence
 # - Creates a dedicated non-root system user for the app
-# - Generates strong random secrets .env
-# - Interactive SSL setup (Let's Encrypt, A+ ready)
-# - Hardening security, tweaking performance
+# - Generates strong random secrets and SFTP password
+# - Interactive SSL setup (Let's Encrypt real or test cert)
+# - Optional self-signed cert for IP access
+# - Hardening security and performance tweaks
 
 set -e  # Exit on error
 
@@ -62,6 +61,7 @@ NAME=${NAME:-ntt}
 NAME=${NAME:-ntt}
 if ! id "$NAME" &>/dev/null; then
     echo "SFTP password:"
+    echo " "
     sudo adduser --system --group --no-create-home --disabled-password "$NAME"
     sudo usermod -s /bin/bash "$NAME"
 
@@ -156,8 +156,7 @@ sudo chown -R "$NAME:$NAME" $IMAGES_DIR
 sudo chmod 755 $IMAGES_DIR
 
 sudo mkdir -p $APP_DIR/public
-sudo chown -R "$NAME:$NAME" $APP_DIR/public
-#sudo chown www-data:www-data $APP_DIR/public
+sudo chown -R www-data:www-data $APP_DIR/public
 sudo chmod 755 $APP_DIR/public
 
 sudo mkdir -p $APP_DIR/logs
@@ -270,19 +269,14 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
         --no-eff-email \
         -m "admin@$DOMAIN"
   fi
-    # A+ snippet...
-    sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
-  ssl_protocols TLSv1.2 TLSv1.3;
-  ssl_ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305;
-  ssl_session_timeout 1d;
-  ssl_session_cache shared:SSL:10M;
-  ssl_session_tickets off;
-  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-  EOF'
-  
-  sudo sed -i '/listen 443/a\n    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not Certbot)' /etc/nginx/sites-available/$NAME
-  sudo openssl dhparam -dsaparam -out /etc/nginx/dhparam.pem 4096
-  echo "ssl_dhparam /etc/nginx/dhparam.pem;" | sudo tee -a /etc/nginx/snippets/ssl-params.conf
+#    # A+ snippet...
+#    sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
+#  ssl_session_cache shared:SSL:10M;
+#  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
+#  EOF'  
+#  sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not Certbot)' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen 443/a    ssl_session_cache shared:SSL:11M;' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen 443/a    Strict-Transport-Security "max-age=62772772; includeSubDomains; preload"' /etc/nginx/sites-available/$NAME
 else
   if [[ $PUBLIC_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
