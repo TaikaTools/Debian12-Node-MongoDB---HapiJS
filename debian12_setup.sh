@@ -150,7 +150,7 @@ sudo chown -R "$NAME:$NAME" $APP_DIR/public
 sudo chmod 755 $APP_DIR/public
 
 sudo mkdir -p $APP_DIR/logs
-sudo chown -R "$NAME:$NAME" $APP_DIRlogs
+sudo chown -R "$NAME:$NAME" $APP_DIR/logs
 #sudo chown www-data:www-data $APP_DIR/logs
 sudo chmod 755 $APP_DIR/logs
 
@@ -291,9 +291,6 @@ else
         -e "/server_name _;/a\    ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;" \
         /etc/nginx/sites-available/$NAME
 
-#      sudo sed -i 's/listen 80;/listen 443 ssl;/' /etc/nginx/sites-available/$NAME
-#      sudo sed -i 's/listen \[::\]:80;/listen \[::\]:443 ssl;/' /etc/nginx/sites-available/$NAME      
-#      sudo sed -i "/server_name _;/a    ssl_certificate /etc/ssl/certs/$NAME-selfsigned.crt;\n    ssl_certificate_key /etc/ssl/private/$NAME-selfsigned.key;" /etc/nginx/sites-available/$NAME
       sudo bash -c "cat >> /etc/nginx/sites-available/$NAME <<'EOF'
 server {
     listen 80;
@@ -328,6 +325,12 @@ EOF
 fi
 
 # 15. Final
+
+sudo chown -R "$NAME:$NAME" "/var/www/ntt"
+#sudo chown -R www-data:www-data "/var/www/ntt"
+sudo chmod 755 "/var/www/ntt"
+cd $APP_DIR
+
 echo "=============================================================="
 echo "COMPLETE! Secrets (COPY IF NEEDED):"
 echo "MongoDB Admin: $ADMIN_PASS"
@@ -342,10 +345,3 @@ fi
 echo " "
 echo "add server.js + pm2.js"
 echo "=============================================================="
-
-cd $APP_DIR
-
-sudo chown -R "$NAME:$NAME" "/var/www/ntt"
-#sudo chown -R www-data:www-data "/var/www/ntt"
-sudo chmod 755 "/var/www/ntt"
-
