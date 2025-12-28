@@ -58,7 +58,6 @@ read -p "5/5 - Database, Folder and User name [ntt]: " NAME
 NAME=${NAME:-ntt}
 
 # 2. Add User
-NAME=${NAME:-ntt}
 if ! id "$NAME" &>/dev/null; then
     echo "SFTP password:"
     echo " "
@@ -269,14 +268,8 @@ if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
         --no-eff-email \
         -m "admin@$DOMAIN"
   fi
-#    # A+ snippet...
-#    sudo bash -c 'cat > /etc/nginx/snippets/ssl-params.conf <<EOF
-#  ssl_session_cache shared:SSL:10M;
-#  add_header Strict-Transport-Security "max-age=63072000; includeSubDomains; preload" always;
-#  EOF'  
-#  sudo sed -i '/listen 443/a    include /etc/nginx/snippets/ssl-params.conf; #A+ snippet (not Certbot)' /etc/nginx/sites-available/$NAME
     sudo sed -i '/listen 443/a    ssl_session_cache shared:SSL:11M;' /etc/nginx/sites-available/$NAME
-    sudo sed -i '/listen 443/a    Strict-Transport-Security "max-age=62772772; includeSubDomains; preload"' /etc/nginx/sites-available/$NAME
+    sudo sed -i '/listen 443/a    add_header Strict-Transport-Security "max-age=62772772; includeSubDomains; preload" always;' /etc/nginx/sites-available/$NAME
 else
   if [[ $PUBLIC_IP =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
@@ -373,6 +366,7 @@ echo "JWT Secret:    $JWT_SECRET"
 
 echo "WWW Folder:    $APP_DIR"
 echo "Image Folder:  $IMAGES_DIR"
+echo "username:      $NAME"
 echo "SFTP password: $GEN_PASS"
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
 echo "SSL email:     admin@$DOMAIN  (Certbot)"
