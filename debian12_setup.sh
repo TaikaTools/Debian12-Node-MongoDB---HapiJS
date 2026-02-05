@@ -109,7 +109,7 @@ sudo apt install -y nodejs
 npm install pm2 -g
 pm2 update
 
-# 7. Secrets & MongoDB Admin – idempotent
+# 7. Secrets & MongoDB Admin - idempotent
 DIDCREATEADMIN=${DIDCREATEADMIN:-n}
 if ! grep -q "^  authorization: enabled" /etc/mongod.conf; then
   echo "First run: Generating secrets and creating users..."
@@ -176,7 +176,8 @@ chmod 600 .env
 sudo chown "$NAME:$NAME" "$APP_DIR/.env"
 
 npm init -y > /dev/null 2>&1
-npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe nodemailer uuid > /dev/null 2>&1
+npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe node-fetch@2 nodemailer uuid > /dev/null 2>&1
+npm audit fix
 
 # 10. Nginx config
 sudo bash -c "cat > /etc/nginx/sites-available/$NAME <<'EOF'
@@ -194,6 +195,8 @@ server {
         access_log off;
     }
 
+    client_max_body_size 5M;
+
     location /api/ {
         rewrite ^/api/(.*) /\$1 break;
         proxy_pass http://127.0.0.1:$PORT;
@@ -205,10 +208,14 @@ server {
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cookie_path / /api/;
-        proxy_buffering off;
+        proxy_request_buffering off;
         
-        # proxy_redirect off;
         # proxy_intercept_errors on;
+
+        # Optional but helpful for larger uploads
+        client_body_timeout 300s;     # Time to receive full body
+        proxy_read_timeout 300s;      # Time for upstream to process
+        proxy_send_timeout 300s;
     }
 
     root /var/www/$NAME/public;
