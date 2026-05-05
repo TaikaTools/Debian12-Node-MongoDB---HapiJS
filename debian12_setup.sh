@@ -279,8 +279,6 @@ server {
         return 404;
     }
 
-    client_max_body_size 5M;
-
     location /api/ {
         rewrite ^/api/(.*) /\$1 break;
         proxy_pass http://127.0.0.1:$PORT;
