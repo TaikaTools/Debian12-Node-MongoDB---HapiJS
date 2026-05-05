@@ -235,7 +235,7 @@ server {
     #location ~* \.(js|css|wasm|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot|json)$ {
     #    expires 1y;
     #    access_log off;
-    #    add_header Cache-Control "public, immutable";
+    #    add_header Cache-Control \"public, immutable\";
     #}
 
     location ~ ^/images/(.+)\.(jpg|jpeg|png|gif)$ {
@@ -246,7 +246,7 @@ server {
         add_header Cache-Control \"public\";
         access_log off;
 
-        set $base $1;
+        set \$base \$1;
         try_files /images/$base$webp_suffix $uri =404;
     }
 
@@ -312,7 +312,7 @@ server {
     location / {
         try_files \$uri \$uri/ /index.html;
         ## expires 1h;
-        ## add_header Cache-Control "public";
+        ## add_header Cache-Control \"public\";
     }
 
     location ~ /\.env { deny all; }
