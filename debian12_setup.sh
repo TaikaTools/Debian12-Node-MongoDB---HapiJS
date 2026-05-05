@@ -57,7 +57,7 @@ NAME=${NAME:-ntt}
 
 # 2. Add User
 if ! id "$NAME" &>/dev/null; then
-    sudo adduser --system --group --no-create-home --disabled-password "$NAME"
+    sudo adduser www-data --system --group --no-create-home --disabled-password "$NAME"
     sudo usermod -s /bin/bash "$NAME"
 
     # Generate a strong 32-char password (letters, digits, symbols)
@@ -135,24 +135,28 @@ fi
 # 8. Project setup
 APP_DIR="/var/www/$NAME"
 sudo mkdir -p $APP_DIR
-sudo chown root:root /var/www
-sudo chown -R "$NAME:$NAME" $APP_DIR
-#sudo chown -R www-data:www-data $APP_DIR
-sudo chmod 755 $APP_DIR
+sudo chown -R root:root /var/www
+sudo chown -R "$NAME:www-data" $APP_DIR
+sudo chmod -R 755 $APP_DIR
 cd $APP_DIR
 
 IMAGES_DIR="/srv/images"
 sudo mkdir -p $IMAGES_DIR
-sudo chown -R www-data:www-data $IMAGES_DIR
-sudo chmod 755 $IMAGES_DIR
+sudo chown -R "$NAME:www-data" $IMAGES_DIR
+sudo chmod -R 755 $IMAGES_DIR
+
+VIDEOS_DIR="/srv/videos"
+sudo mkdir -p $VIDEOS_DIR
+sudo chown -R "$NAME:www-data" $VIDEOS_DIR
+sudo chmod -R 755 $VIDEOS_DIR
 
 sudo mkdir -p $APP_DIR/public
-sudo chown -R www-data:www-data $APP_DIR/public
-sudo chmod 755 $APP_DIR/public
+sudo chown -R "$NAME:www-data" $APP_DIR/public
+sudo chmod -R 755 $APP_DIR/public
 
 sudo mkdir -p $APP_DIR/logs
-sudo chown www-data:www-data $APP_DIR/logs
-sudo chmod 755 $APP_DIR/logs
+sudo chown -R "$NAME:www-data" $APP_DIR/logs
+sudo chmod -R 755 $APP_DIR/logs
 
 # 9. Save secrets to .env (only if not already present)
 cat > .env <<EOF
@@ -160,23 +164,29 @@ DOMAIN=$DOMAIN
 HOST=127.0.0.1
 PORT=$PORT
 UPLOADS_PATH=$IMAGES_DIR
+IMAGES_PATH=$IMAGES_DIR
+VIDEOS_PATH=$VIDEOS_DIR
 NAMEUSERFOLDER=$NAME
+NODE_ENV=production
+# MongoDB
 MONGODB_APP="mongodb://app:$APP_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
 # MONGODB_ADMIN="mongodb://admin:$ADMIN_PASS@127.0.0.1:27017/$NAME?authSource=$NAME"
+# Jwt
 JWT_SECRET=$JWT_SECRET
-NODE_ENV=production
-# NODEMAILER_HOST=smtp.gmail.com
+# Hetzner
+# NODEMAILER_HOST=mail.your-server.de
 # NODEMAILER_PORT=465
-# NODEMAILER_USER=yourgmail@gmail.com
-# NODEMAILER_PASS=yourapppassword
+# NODEMAILER_USER=do_not_reply@your-server.de
+# NODEMAILER_PASS=please_Make_A_Good_Password
+# Stripe
 # STRIPE_SECRET_KEY=sk_test_...
 # STRIPE_WEBHOOK_SECRET=whsec_...
 EOF
 chmod 600 .env
-sudo chown "$NAME:$NAME" "$APP_DIR/.env"
+sudo chown "$NAME:www-data" "$APP_DIR/.env"
 
 npm init -y > /dev/null 2>&1
-npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert mongoose bcryptjs dotenv stripe node-fetch@2 nodemailer uuid > /dev/null 2>&1
+npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert sharp ffmpeg mongoose bcryptjs dotenv stripe node-fetch@2 nodemailer uuid > /dev/null 2>&1
 npm audit fix
 
 # 10. Nginx config
@@ -187,12 +197,82 @@ server {
 
     server_name _;
     
-    location /images/ {
-        alias $IMAGES_DIR/;
+    gzip on;
+    gzip_vary on;
+    gzip_comp_level 6;
+    gzip_min_length 256;
+    gzip_proxied any;
+    gzip_http_version 1.1;
+
+    gzip_types
+        text/plain
+        text/css
+        text/javascript
+        application/javascript
+        application/json
+        application/wasm
+        application/xml
+        text/xml
+        image/svg+xml;
+
+    gzip_static on;
+
+    location ~* \.(mjs|wasm)$ {
+        expires max;
+        add_header Cache-Control "public, immutable" always;
+        add_header Vary "Accept-Encoding" always;
+        # This forces the correct Content-Type even if something else overrides it
+        add_header Content-Type $content_type always;
+    }
+
+    # Optional: strong long-term caching for hashed Flutter assets
+    #location ~* \.(js|css|wasm|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot|json)$ {
+    #    expires 1y;
+    #    access_log off;
+    #    add_header Cache-Control "public, immutable";
+    #}
+
+    location ~ ^/images/(.+)\.(jpg|jpeg|png|gif)$ {
+        root /srv;
         expires 27d;
+        add_header Vary Accept always;
         add_header Access-Control-Allow-Origin "*" always;
         add_header Cache-Control "public";
         access_log off;
+
+        set $base $1;
+        try_files /images/$base$webp_suffix $uri =404;
+    }
+
+    location /hls/ {
+        root /srv;
+
+        types {
+            application/vnd.apple.mpegurl m3u8;
+            video/mp2t ts;
+        }
+
+        add_header Cache-Control no-cache;
+
+        # CORS (needed for web players)
+        add_header Access-Control-Allow-Origin *;
+    }
+
+    location /videos/ {
+        root /srv;
+        mp4;
+        mp4_buffer_size       1m;
+        mp4_max_buffer_size   5m;
+        mp4_limit_rate        on;
+        mp4_limit_rate_after  30s;
+
+        add_header Cache-Control no-cache;
+    }
+
+    error_page 404 = @empty404;
+
+    location @empty404 {
+        return 404;
     }
 
     client_max_body_size 5M;
@@ -218,6 +298,8 @@ server {
         proxy_send_timeout 300s;
     }
 
+    client_max_body_size 50M;
+
     root /var/www/$NAME/public;
     index index.html;
 
@@ -229,8 +311,14 @@ server {
 
     location ~ /\.env { deny all; }
 }
-
 EOF"
+
+sudo sed -i '/^http {/a \
+    map $http_accept $webp_suffix {\
+        default   "";\
+        "~*webp"  ".webp";\
+    }\
+    ' /etc/nginx/nginx.conf
 
 sudo ln -sf /etc/nginx/sites-available/$NAME /etc/nginx/sites-enabled/
 sudo rm -f /etc/nginx/sites-available/default
@@ -316,7 +404,7 @@ exit
 EOF
 fi
 
-# 15. Format and mount XFS volumes (if present)
+# 15. Format and mount XFS volumes (if present, still TODO)
 if [ -b /dev/sdb ] || [ -b /dev/sdc ]; then
   # MongoDB data on /dev/sdb
   if [ -b /dev/sdb ]; then
@@ -340,8 +428,8 @@ if [ -b /dev/sdb ] || [ -b /dev/sdc ]; then
       sudo mount /dev/sdc /srv/images
       UUID_IMAGES=$(sudo blkid -s UUID -o value /dev/sdc)
       echo "UUID=$UUID_IMAGES /srv/images xfs defaults,noatime 0 2" | sudo tee -a /etc/fstab
-      sudo chown -R www-data:www-data /srv/images
-      sudo chmod 755 /srv/images
+      sudo chown -R "$NAME:www-data" /srv/images
+      sudo chmod -R 755 /srv/images
   fi
 
   # Mount all (in case of reboot in script)
@@ -351,9 +439,11 @@ if [ -b /dev/sdb ] || [ -b /dev/sdc ]; then
   sudo systemctl start mongod
 fi
 
-sudo chown -R "$NAME:$NAME" $APP_DIR
-#sudo chown -R www-data:www-data $APP_DIR
-sudo chmod 755 $APP_DIR
+sudo chown -R "$NAME:www-data" $APP_DIR
+sudo chmod -R 755 $APP_DIR
+
+chmod 600 .env
+
 sudo systemctl restart ssh
 cd $APP_DIR
 
@@ -367,6 +457,7 @@ echo "JWT Secret:    $JWT_SECRET"
 echo " "
 echo "WWW Folder:    $APP_DIR"
 echo "Image Folder:  $IMAGES_DIR"
+echo "Video Folder:  $VIDEOS_DIR"
 echo "username:      $NAME"
 echo "SFTP password: $GEN_PASS"
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
