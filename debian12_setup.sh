@@ -150,6 +150,11 @@ sudo mkdir -p $VIDEOS_DIR
 sudo chown -R "$NAME:www-data" $VIDEOS_DIR
 sudo chmod -R 755 $VIDEOS_DIR
 
+HSL_DIR="/srv/hsl"
+sudo mkdir -p $HSL_DIR
+sudo chown -R "$NAME:www-data" $HSL_DIR
+sudo chmod -R 755 $HSL_DIR
+
 sudo mkdir -p $APP_DIR/public
 sudo chown -R "$NAME:www-data" $APP_DIR/public
 sudo chmod -R 755 $APP_DIR/public
@@ -166,6 +171,7 @@ PORT=$PORT
 UPLOADS_PATH=$IMAGES_DIR
 IMAGES_PATH=$IMAGES_DIR
 VIDEOS_PATH=$VIDEOS_DIR
+HSL_PATH=$HSL_DIR
 NAMEUSERFOLDER=$NAME
 NODE_ENV=production
 # MongoDB
@@ -458,6 +464,7 @@ echo " "
 echo "WWW Folder:    $APP_DIR"
 echo "Image Folder:  $IMAGES_DIR"
 echo "Video Folder:  $VIDEOS_DIR"
+echo "HSL Folder:    $HSL_DIR"
 echo "username:      $NAME"
 echo "SFTP password: $GEN_PASS"
 if [ "$DOMAIN" != "yourdomain_dot_com" ]; then
