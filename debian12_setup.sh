@@ -225,8 +225,8 @@ server {
 
     location ~* \.(mjs|wasm)$ {
         expires max;
-        add_header Cache-Control "public, immutable" always;
-        add_header Vary "Accept-Encoding" always;
+        add_header Cache-Control \"public, immutable\" always;
+        add_header Vary \"Accept-Encoding\" always;
         # This forces the correct Content-Type even if something else overrides it
         add_header Content-Type $content_type always;
     }
@@ -242,8 +242,8 @@ server {
         root /srv;
         expires 27d;
         add_header Vary Accept always;
-        add_header Access-Control-Allow-Origin "*" always;
-        add_header Cache-Control "public";
+        add_header Access-Control-Allow-Origin \"*\" always;
+        add_header Cache-Control \"public\";
         access_log off;
 
         set $base $1;
