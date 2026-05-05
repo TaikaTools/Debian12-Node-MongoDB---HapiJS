@@ -261,7 +261,7 @@ server {
         add_header Cache-Control no-cache;
 
         # CORS (needed for web players)
-        add_header Access-Control-Allow-Origin *;
+        add_header Access-Control-Allow-Origin \"*\";
     }
 
     location /videos/ {
@@ -269,10 +269,8 @@ server {
         mp4;
         mp4_buffer_size       1m;
         mp4_max_buffer_size   5m;
-        mp4_limit_rate        on;
-        mp4_limit_rate_after  30s;
 
-        add_header Cache-Control no-cache;
+        #add_header Cache-Control no-cache;
     }
 
     error_page 404 = @empty404;
