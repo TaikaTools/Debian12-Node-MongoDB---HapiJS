@@ -57,7 +57,7 @@ NAME=${NAME:-ntt}
 
 # 2. Add User
 if ! id "$NAME" &>/dev/null; then
-    sudo adduser www-data --system --group --no-create-home --disabled-password "$NAME"
+    sudo adduser www-data --system --group --no-create-home --disabled-password #"$NAME"
     sudo usermod -s /bin/bash "$NAME"
 
     # Generate a strong 32-char password (letters, digits, symbols)
