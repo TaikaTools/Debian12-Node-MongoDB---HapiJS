@@ -3,16 +3,17 @@
 # This script installs:
 # - Node.js 24.x LTS
 # - MongoDB 8.0 (secure, auth enabled)
-# - Nginx (reverse proxy + fast static/images)
+# - Nginx (reverse proxy + fast static/images, stream videos)
 # - Hapi.js for REST API, auth, logic, and database
 # - PM2 (process manager with clustering)
 # - ufw (Uncomplicated Firewall)
-# - Optional: tmux for session persistence
+# - Optional: tmux for session persistence (devs cheats)
 # - Creates a dedicated non-root system user for the app
 # - Generates strong random secrets and SFTP password
 # - Interactive SSL setup (Let's Encrypt real or test cert)
-# - Optional self-signed cert for IP access
+# - Optional self-signed cert for domain / IP access
 # - Hardening security and performance tweaks
+# - Gzip before raw, webp before jpg, wasm if possible.
 
 set -e  # Exit on error
 
@@ -192,7 +193,7 @@ chmod 600 .env
 sudo chown "$NAME:www-data" "$APP_DIR/.env"
 
 npm init -y > /dev/null 2>&1
-npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert sharp ffmpeg mongoose bcryptjs dotenv stripe node-fetch@2 nodemailer uuid > /dev/null 2>&1
+npm install @hapi/hapi @hapi/boom @hapi/joi @hapi/jwt @hapi/cookie @hapi/inert sharp ffmpeg mongoose bcryptjs dotenv stripe libnginx-mod-http-brotli-filter libnginx-mod-http-brotli-static node-fetch@2 nodemailer uuid > /dev/null 2>&1
 npm audit fix
 
 # 10. Nginx config
@@ -205,7 +206,7 @@ server {
     
     gzip on;
     gzip_vary on;
-    gzip_comp_level 6;
+    gzip_comp_level 7;
     gzip_min_length 256;
     gzip_proxied any;
     gzip_http_version 1.1;
@@ -223,27 +224,48 @@ server {
 
     gzip_static on;
 
+    brotli on;
+    brotli_comp_level 7;
+    brotli_types 
+        text/plain 
+        text/css 
+        text/javascript 
+        application/javascript 
+        application/json 
+        application/wasm 
+        image/svg+xml 
+        application/xml;
+
+    brotli_static on;
+
+    client_max_body_size 50M;
+
+    root /var/www/$NAME/public;
+    index index.html;
+
+    # Index & Flutter file, never cached
+    location ~* ^/(flutter_bootstrap\.js|index\.html)$ {
+        expires -1;
+        add_header Cache-Control \"no-cache, no-store, must-revalidate\" always;
+        add_header Pragma \"no-cache\" always;
+        add_header Expires \"0\" always;
+    }
+
+    # WASM
     location ~* \.(mjs|wasm)$ {
-        expires max;
+        expires 1y;
         add_header Cache-Control \"public, immutable\" always;
         add_header Vary \"Accept-Encoding\" always;
         # This forces the correct Content-Type even if something else overrides it
-        add_header Content-Type $content_type always;
+        #add_header Content-Type \$content_type always;
     }
 
-    # Optional: strong long-term caching for hashed Flutter assets
-    #location ~* \.(js|css|wasm|png|jpg|jpeg|gif|ico|svg|woff2?|ttf|eot|json)$ {
-    #    expires 1y;
-    #    access_log off;
-    #    add_header Cache-Control \"public, immutable\";
-    #}
-
-    location ~ ^/images/(.+)\.(jpg|jpeg|png|gif)$ {
+    location ~* ^/images/(.+)\.(jpg|jpeg|png|gif)$ {
         root /srv;
         expires 27d;
-        add_header Vary Accept always;
+        add_header Vary \"Accept\" always;
         add_header Access-Control-Allow-Origin \"*\" always;
-        add_header Cache-Control \"public\";
+        add_header Cache-Control \"public, max-age=2332800\" always;
         access_log off;
 
         set \$base \$1;
@@ -273,6 +295,14 @@ server {
         #add_header Cache-Control no-cache;
     }
 
+    # Long cache for hashed/immutable assets (recommended by Flutter)
+    location ~* \.(js|css|wasm|png|jpg|jpeg|gif|ico|svg|wepb|woff2?|ttf|eot|otf)$ {
+        expires 1y;
+        add_header Cache-Control \"public, immutable\" always;
+        access_log off;
+        add_header Cache-Control \"Accept-Encoding\" always;
+    }
+
     error_page 404 = @empty404;
 
     location @empty404 {
@@ -292,26 +322,18 @@ server {
         proxy_cookie_path / /api/;
         proxy_request_buffering off;
         
-        # proxy_intercept_errors on;
-
-        # Optional but helpful for larger uploads
-        client_body_timeout 300s;     # Time to receive full body
-        proxy_read_timeout 300s;      # Time for upstream to process
+         # Optional but helpful for larger uploads
+        client_body_timeout 300s;
+        proxy_read_timeout 300s;
         proxy_send_timeout 300s;
     }
 
-    client_max_body_size 50M;
-
-    root /var/www/$NAME/public;
-    index index.html;
-
     location / {
         try_files \$uri \$uri/ /index.html;
-        ## expires 1h;
-        ## add_header Cache-Control \"public\";
     }
 
     location ~ /\.env { deny all; }
+    location ~ /\.ht { deny all; }
 }
 EOF"
 
